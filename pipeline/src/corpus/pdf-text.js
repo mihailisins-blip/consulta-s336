@@ -93,3 +93,44 @@ export async function pdfToLines(data) {
 export async function pdfFileToLines(path) {
   return pdfToLines(await readFile(path));
 }
+
+/**
+ * Índice de secciones (TOC) de un PDF a partir de sus marcadores/outline (KTD8).
+ * Si el PDF no trae outline devuelve `[]` — la detección por encabezados queda
+ * como mejora posterior.
+ * @param {Uint8Array|Buffer} data
+ * @returns {Promise<Array<{titulo:string, pagina:number|null, nivel:number}>>}
+ */
+export async function pdfOutline(data) {
+  const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const bytes = data instanceof Uint8Array && data.constructor === Uint8Array ? data : Uint8Array.from(data);
+  const doc = await getDocument({ data: bytes, isEvalSupported: false, useSystemFonts: false }).promise;
+  /** @type {Array<{titulo:string, pagina:number|null, nivel:number}>} */
+  const out = [];
+  try {
+    const outline = await doc.getOutline();
+    if (!outline) return out;
+    const visit = async (items, nivel) => {
+      for (const it of items) {
+        let pagina = null;
+        try {
+          const dest = typeof it.dest === 'string' ? await doc.getDestination(it.dest) : it.dest;
+          if (Array.isArray(dest) && dest[0]) {
+            pagina = (await doc.getPageIndex(dest[0])) + 1;
+          }
+        } catch { /* destino no resoluble */ }
+        out.push({ titulo: (it.title || '').trim(), pagina, nivel });
+        if (it.items?.length) await visit(it.items, nivel + 1);
+      }
+    };
+    await visit(outline, 1);
+  } finally {
+    await doc.destroy?.();
+  }
+  return out;
+}
+
+/** @param {string} path */
+export async function pdfFileOutline(path) {
+  return pdfOutline(await readFile(path));
+}
