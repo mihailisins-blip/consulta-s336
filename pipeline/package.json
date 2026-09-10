@@ -1,0 +1,21 @@
+{
+  "name": "consulta-s336-pipeline",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CLI de extracción del corpus S336 a una carpeta de datos versionada",
+  "bin": {
+    "consulta-s336-build": "src/index.js"
+  },
+  "scripts": {
+    "build": "node src/index.js build",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^4.10.38",
+    "xlsx": "^0.18.5"
+  }
+}
