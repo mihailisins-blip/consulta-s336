@@ -20,7 +20,7 @@ export function normalizarCodigo(raw) {
 
   s = s.replace(/^(VMI|LM)\./, '');            // prefijo de tipo
   s = s.replace(/^\d{3,4}(\.\d{2})?\./, '');     // token de serie 3770. / 3360.01.
-  s = s.replace(/_A\d+$/i, '');                  // sufijo de revisión de archivo (_A0)
+  s = s.replace(/_[A-Z]\d+$/i, '');             // sufijo de revisión de archivo (_A0, _B0…)
 
   // colapsa el punto interno del código de sistema: "F.D5.01.02" -> "FD5.01.02"
   s = s.replace(/^([A-Z])\.([A-Z]?\d[A-Z]?)\./, '$1$2.');

@@ -12,6 +12,7 @@ test('normalizarCodigo unifica las tres grafías por el sufijo', () => {
   assert.equal(normalizarCodigo('FD5.01.02'), 'FD5.01.02');
   assert.equal(normalizarCodigo('BA1.01.01'), 'BA1.01.01');
   assert.equal(normalizarCodigo('VMI.3770.FC1.01.02_A0'), 'FC1.01.02');
+  assert.equal(normalizarCodigo('VMI.3770.JD2.02.02_B0'), 'JD2.02.02'); // sufijo de revisión _B0
   assert.equal(normalizarCodigo('MC (Sección 2)'), null);
   assert.equal(normalizarCodigo(''), null);
   // rellena ceros: 1.1 -> 01.01

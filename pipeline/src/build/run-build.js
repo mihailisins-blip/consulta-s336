@@ -1,0 +1,164 @@
+// Orquestador de la extracción completa (U1..U6): del corpus a una carpeta de datos.
+
+import path from 'node:path';
+import { promises as fs } from 'node:fs';
+import { walkDir } from '../corpus/walk.js';
+import { pdfToLines, pdfOutline } from '../corpus/pdf-text.js';
+import { parseVmi } from '../corpus/vmi-parser.js';
+import { parsePlan } from '../corpus/xlsx-plan.js';
+import { parseMateriales } from '../corpus/xlsx-materiales.js';
+import { buildCycleModel } from '../model/cycles.js';
+import { buildCatalog } from '../model/catalog.js';
+import { buildJoinGraph } from '../model/join.js';
+import { normalizarCodigo } from '../model/codes.js';
+import { writeDatabase } from './sqlite-writer.js';
+import { carryOverridesAndDiff } from './diff.js';
+import { selectAndCopyPdfs } from './pdf-select-copy.js';
+import { writeManifest, readManifest, SCHEMA_VERSION } from './manifest.js';
+
+/** map con concurrencia acotada */
+async function pMap(items, fn, concurrency = 8) {
+  const out = new Array(items.length);
+  let i = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (i < items.length) {
+      const idx = i++;
+      out[idx] = await fn(items[idx], idx);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
+/**
+ * @param {object} args
+ * @param {import('../config.js').ResolvedConfig} args.cfg
+ * @param {string|null} [args.prevDir]
+ * @param {boolean} [args.conToc]  extraer el TOC (outline) de los manuales de `05` (lento)
+ * @param {(m:string)=>void} [args.log]
+ */
+export async function runBuild({ cfg, prevDir = null, conToc = false, log = () => {} }) {
+  const outDir = cfg.outDir;
+  await fs.mkdir(outDir, { recursive: true });
+
+  // ---- XLSX ----
+  const xlsx = (await import('xlsx')).default;
+  const planXlsx = (await walkDir(cfg.roots.plan)).files.find((f) => f.type === 'xlsx');
+  const matXlsx = (await walkDir(cfg.roots.materiales)).files.find((f) => f.type === 'xlsx');
+  if (!planXlsx) throw new Error(`no se encontró el XLSX del plan en ${cfg.roots.plan}`);
+  if (!matXlsx) throw new Error(`no se encontró Listas de materiales.xlsx en ${cfg.roots.materiales}`);
+  log(`plan:      ${planXlsx.name}`);
+  log(`materiales: ${matXlsx.name}`);
+  const plan = parsePlan(xlsx, xlsx.readFile(path.join(cfg.roots.plan, planXlsx.relPath)));
+  const materiales = parseMateriales(xlsx, xlsx.readFile(path.join(cfg.roots.materiales, matXlsx.relPath)));
+  for (const a of [...plan.avisos, ...materiales.avisos]) log(`  aviso XLSX: ${a}`);
+
+  // ---- VMIs ----
+  const { files: vmiFiles } = await walkDir(cfg.roots.vmi);
+  const vmiPdfs = vmiFiles.filter((f) => f.type === 'pdf' && /^VMI\.[0-9]/i.test(path.basename(f.name)));
+  log(`VMI: parseando ${vmiPdfs.length} PDFs...`);
+  let done = 0;
+  const vmiRecords = await pMap(vmiPdfs, async (f) => {
+    const codigo = path.basename(f.name).replace(/\.pdf$/i, '').replace(/_A\d+$/i, '');
+    const ciclo = f.relPath.split('/')[0];
+    let rec;
+    try {
+      rec = parseVmi(await pdfToLines(await fs.readFile(path.join(cfg.roots.vmi, f.relPath))), { codigo });
+    } catch (e) {
+      rec = { codigo, sinExtraer: true, motivo: `error al leer el PDF: ${e.message}` };
+    }
+    rec.relPath = f.relPath;
+    rec.ciclo = ciclo;
+    if ((++done % 100) === 0) log(`  ${done}/${vmiPdfs.length}`);
+    return rec;
+  });
+  const sinExtraer = vmiRecords.filter((r) => r.sinExtraer);
+  log(`VMI: ${vmiRecords.length} parseados, ${sinExtraer.length} sin extraer (${(100 * sinExtraer.length / vmiRecords.length).toFixed(1)}%)`);
+
+  // ---- manuales de `05` ----
+  const { files: manFiles } = await walkDir(cfg.roots.manuales);
+  /** @type {Record<string, any[]>} */
+  const bySub = {};
+  for (const f of manFiles) {
+    const seg = f.relPath.includes('/') ? f.relPath.slice(0, f.relPath.indexOf('/')) : '.';
+    if (seg === '.') continue;
+    (bySub[seg] ??= []).push(f);
+  }
+  const manualesDirs = Object.entries(bySub).map(([name, files]) => ({ name, relPath: name, files }));
+
+  /** @type {Record<string, any[]>} */
+  const tocPorManual = {};
+  if (conToc) {
+    const manPdfs = manFiles.filter((f) => f.type === 'pdf');
+    log(`TOC: leyendo outline de ${manPdfs.length} manuales...`);
+    await pMap(manPdfs, async (f) => {
+      try {
+        tocPorManual[f.relPath] = await pdfOutline(await fs.readFile(path.join(cfg.roots.manuales, f.relPath)));
+      } catch {
+        tocPorManual[f.relPath] = [];
+      }
+    }, 6);
+  }
+
+  // ---- modelo ----
+  const model = buildCycleModel({ plan, materiales });
+  const catalog = buildCatalog({ materiales, vmiRecords });
+  const join = buildJoinGraph({ plan, materiales, vmiRecords, manualesDirs, tocPorManual });
+  const vmiByCode = new Map();
+  for (const r of vmiRecords) {
+    const c = normalizarCodigo(r.codigo);
+    if (!c) continue;
+    const prev = vmiByCode.get(c);
+    if (!prev || (prev.sinExtraer && !r.sinExtraer)) vmiByCode.set(c, r);
+  }
+  log(`unión: ${join.resumen.sistemas} sistemas, ${join.resumen.actividades} actividades, ${join.resumen.incidencias} incidencias`);
+
+  // ---- versión de carpeta de datos ----
+  const prevManifest = prevDir ? await readManifest(prevDir) : null;
+  const dataFolderVersion = (prevManifest?.data_folder_version ?? 0) + 1;
+
+  // ---- escribir ----
+  const dbPath = path.join(outDir, 'data.sqlite');
+  const { counts } = await writeDatabase(dbPath, {
+    plan, materiales, model, catalog, join, vmiByCode,
+    meta: { plan_xlsx: planXlsx.name, materiales_xlsx: matXlsx.name, data_folder_version: String(dataFolderVersion) },
+  });
+  log(`db: ${JSON.stringify(counts)}`);
+
+  // ---- re-extracción no destructiva (U7): traspasar overrides + registrar diffs ----
+  let diff = null;
+  if (prevDir) {
+    const prevDb = path.join(prevDir, 'data.sqlite');
+    diff = await carryOverridesAndDiff(dbPath, prevDb);
+    log(`diff vs ${prevDir}: ${diff.overridesCopiados} overrides y ${diff.fichasCopiadas} fichas traspasados; ${diff.cambios} cambios de origen marcados para revisión ${JSON.stringify(diff.cambiosPorEntidad)}`);
+  }
+
+  let copy = { copiados: 0, excluidos: [], bytes: 0, porArea: {} };
+  if (cfg.bundlePdfs) {
+    copy = await selectAndCopyPdfs({ roots: cfg.roots, outDir, log });
+    log(`pdfs: ${copy.copiados} copiados (${(copy.bytes / 1e6).toFixed(0)} MB), ${copy.excluidos.length} excluidos (mega-PDF)`);
+  } else {
+    log('pdfs: omitidos (bundlePdfs=false)');
+  }
+
+  const manifest = await writeManifest(outDir, {
+    dataFolderVersion,
+    sources: {
+      plan_xlsx: planXlsx.name,
+      materiales_xlsx: matXlsx.name,
+      cdrom_root: cfg.cdromRoot ?? null,
+    },
+    counts: { ...counts, vmi_sin_extraer: sinExtraer.length, pdfs: copy.copiados },
+  });
+
+  return {
+    outDir,
+    schemaVersion: SCHEMA_VERSION,
+    dataFolderVersion,
+    counts: manifest.counts,
+    incidencias: join.incidencias,
+    sinExtraer: sinExtraer.map((r) => ({ relPath: r.relPath, motivo: r.motivo })),
+    diff,
+    copy,
+  };
+}

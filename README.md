@@ -18,18 +18,38 @@ Plan de implementación completo: `flota-locomotoras/docs/plans/2026-09-03-2018-
 
 ## Pipeline — uso rápido
 
+Requiere **Node >= 22** con el flag `--experimental-sqlite` (usa `node:sqlite`,
+que ya trae FTS5). Los scripts de `npm` ya lo incluyen.
+
 ```
 cd pipeline
 npm install
-node src/index.js build --config <ruta-a-config.json>
+npm run build -- --config <ruta-a-config.json>     # -> carpeta de datos en outDir
 npm test
 ```
 
-`config.json` (ejemplo):
+Equivale a `node --experimental-sqlite src/index.js build --config <…>`.
+
+Flags de `build`:
+
+| Flag | Efecto |
+|---|---|
+| `--config <json>` | Configuración (obligatorio). |
+| `--dry-run` | Solo inventario; no escribe la carpeta de datos. |
+| `--prev <carpeta>` | Re-extracción: traspasa las ediciones del curador (`overrides`, fichas revisadas) de esa carpeta anterior y marca los cambios de origen en `cambio_pendiente`. |
+| `--con-toc` | Extrae el índice (outline) de los manuales de `05`. Lento; por defecto no. |
+
+`config.json` (ejemplo — se admiten `/` en las rutas):
 
 ```json
 {
-  "cdromRoot": "Z:\\OPERACIONES\\...\\CDROM LOC ADIF ED.2",
-  "outDir": "./data"
+  "cdromRoot": "Z:/OPERACIONES/.../CDROM LOC ADIF ED.2",
+  "outDir": "./data",
+  "bundlePdfs": true
 }
 ```
+
+La carpeta de datos resultante contiene `data.sqlite` (datos + índice FTS5),
+`pdfs/` (los VMI individuales, manuales de `05` y esquemas; se excluyen los
+mega-PDF pre-fusionados por ciclo) y `manifest.json` (versión de esquema y de
+carpeta, fecha, orígenes, conteos).

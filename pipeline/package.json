@@ -8,8 +8,8 @@
     "consulta-s336-build": "src/index.js"
   },
   "scripts": {
-    "build": "node src/index.js build",
-    "test": "node --test test/*.test.js"
+    "build": "node --experimental-sqlite src/index.js build",
+    "test": "node --experimental-sqlite --test test/*.test.js"
   },
   "engines": {
     "node": ">=22"
