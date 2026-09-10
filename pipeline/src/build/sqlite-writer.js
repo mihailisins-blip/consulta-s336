@@ -46,6 +46,8 @@ CREATE TABLE actividad (
   marca_seguridad INTEGER DEFAULT 0,
   observaciones_plan TEXT,
   zonas_trabajo TEXT,
+  duracion TEXT,          -- R7: la rellena el curador (vía overrides); reservado para el simulador
+  zona TEXT,              -- R7: idem; la zona operativa "de simulación", distinta de zonas_trabajo del VMI
   fuente_vmi INTEGER, fuente_plan INTEGER, fuente_materiales INTEGER
 );
 CREATE TABLE actividad_paso (
