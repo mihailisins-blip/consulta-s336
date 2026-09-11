@@ -118,6 +118,7 @@ test('selectAndCopyPdfs: copia los VMI individuales y excluye los mega-PDF', asy
   await corpus.cleanup();
 
   assert.ok(res.copiados >= 4);
+  assert.deepEqual(res.fallidos, []); // ningún PDF debería fallar al copiar en el corpus falso
   await fs.access(path.join(outDir, 'pdfs', 'vmi', 'I1', 'VMI.3770.FD5.01.01.pdf')); // copiado
   await assert.rejects(fs.access(path.join(outDir, 'pdfs', 'vmi', 'NS', 'NS.pdf'))); // excluido
   assert.ok(res.excluidos.some((e) => e.endsWith('NS/NS.pdf')));
@@ -128,13 +129,18 @@ test('selectAndCopyPdfs: copia los VMI individuales y excluye los mega-PDF', asy
 
 test('writeManifest: schema_version y data_folder_version presentes; --prev incrementa', async () => {
   const d1 = path.join(tmp, 'v1');
-  const m1 = await writeManifest(d1, { dataFolderVersion: 1, sources: { plan_xlsx: 'plan.xlsx' }, counts: { actividades: 437 } });
+  const m1 = await writeManifest(d1, {
+    dataFolderVersion: 1, sources: { plan_xlsx: 'plan.xlsx' }, counts: { actividades: 437 },
+    avisos: ["'PLAN MANTENIMIENTO': sin fila de cabecera"],
+  });
   assert.equal(m1.schema_version, 1);
   assert.equal(m1.data_folder_version, 1);
   assert.match(m1.build_date, /^\d{4}-\d{2}-\d{2}T/);
+  assert.deepEqual(m1.avisos, ["'PLAN MANTENIMIENTO': sin fila de cabecera"]);
 
   const prev = await readManifest(d1);
   const d2 = path.join(tmp, 'v2');
   const m2 = await writeManifest(d2, { dataFolderVersion: (prev.data_folder_version ?? 0) + 1 });
   assert.equal(m2.data_folder_version, 2);
+  assert.deepEqual(m2.avisos, []); // por defecto, sin avisos
 });

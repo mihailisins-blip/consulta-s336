@@ -110,9 +110,11 @@ export function parsePlan(xlsx, workbook) {
       const cell = ws[xlsx.utils.encode_cell({ r, c })];
       return cell && cell.v != null ? String(cell.w ?? cell.v).trim() : '';
     };
-    // cabecera: primera fila cuya col A sea "CÓDIGO"
+    // cabecera: primera fila cuya col A sea "CÓDIGO" (sin límite de fila --
+    // una versión editada de la hoja puede tener filas de título/leyenda
+    // extra antes de la cabecera real).
     let hr = -1;
-    for (let r = range.s.r; r <= Math.min(range.e.r, 20); r++) {
+    for (let r = range.s.r; r <= range.e.r; r++) {
       if (/^CÓDIGO$|^CODIGO$/i.test(get(r, 0))) { hr = r; break; }
     }
     if (hr < 0) {

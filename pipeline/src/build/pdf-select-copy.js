@@ -18,7 +18,7 @@ export function esVmiIndividual(name) {
  * @param {Record<string,string>} args.roots  { vmi, manuales, esquemas? } -> ruta absoluta
  * @param {string} args.outDir  carpeta de datos
  * @param {(m:string)=>void} [args.log]
- * @returns {Promise<{copiados:number, excluidos:string[], bytes:number, porArea:Record<string,{copiados:number,bytes:number}>}>}
+ * @returns {Promise<{copiados:number, excluidos:string[], fallidos:string[], bytes:number, porArea:Record<string,{copiados:number,bytes:number}>}>}
  */
 export async function selectAndCopyPdfs({ roots, outDir, log = () => {} }) {
   const pdfsDir = path.join(outDir, 'pdfs');
@@ -28,6 +28,11 @@ export async function selectAndCopyPdfs({ roots, outDir, log = () => {} }) {
   let copiados = 0;
   let bytes = 0;
   const excluidos = [];
+  // Un PDF que no se pueda copiar (bloqueado, permiso denegado, ruta
+  // demasiado larga…) no debe abortar los cientos que sí se pueden -- se
+  // registra aquí y se sigue, igual que un VMI que no se puede parsear se
+  // marca sinExtraer en vez de abortar el build (R2/AE1).
+  const fallidos = [];
   /** @type {Record<string,{copiados:number,bytes:number}>} */
   const porArea = {};
 
@@ -47,15 +52,21 @@ export async function selectAndCopyPdfs({ roots, outDir, log = () => {} }) {
         if (f.type === 'pdf') excluidos.push(`${area}/${f.relPath}`);
         continue;
       }
-      await fs.mkdir(path.dirname(dest), { recursive: true });
-      await fs.copyFile(path.join(root, f.relPath), dest);
-      copiados++;
-      bytes += f.size;
-      porArea[area].copiados++;
-      porArea[area].bytes += f.size;
+      try {
+        await fs.mkdir(path.dirname(dest), { recursive: true });
+        await fs.copyFile(path.join(root, f.relPath), dest);
+        copiados++;
+        bytes += f.size;
+        porArea[area].copiados++;
+        porArea[area].bytes += f.size;
+      } catch (e) {
+        fallidos.push(`${area}/${f.relPath}: ${e.code || e.message}`);
+      }
     }
     log(`  ${area}: ${porArea[area].copiados} PDFs, ${(porArea[area].bytes / 1e6).toFixed(1)} MB`);
   }
 
-  return { copiados, excluidos, bytes, porArea };
+  if (fallidos.length) log(`  aviso: ${fallidos.length} PDF(s) no se pudieron copiar (ver 'fallidos')`);
+
+  return { copiados, excluidos, fallidos, bytes, porArea };
 }

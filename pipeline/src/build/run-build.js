@@ -16,6 +16,21 @@ import { carryOverridesAndDiff } from './diff.js';
 import { selectAndCopyPdfs } from './pdf-select-copy.js';
 import { writeManifest, readManifest, SCHEMA_VERSION } from './manifest.js';
 
+/**
+ * Registra los errores de recorrido de un subárbol (p. ej. un permiso
+ * denegado o una carpeta que desapareció a mitad de lectura en la red).
+ * walkDir no lanza -- los devuelve en `errors` -- así que sin esto pasarían
+ * inadvertidos: el build seguiría en verde con el corpus infracontado.
+ * @param {string} area
+ * @param {string[]} errors
+ * @param {(m:string)=>void} log
+ */
+export function logWalkErrors(area, errors, log) {
+  if (!errors.length) return;
+  log(`  aviso: ${errors.length} error(es) al recorrer ${area}:`);
+  for (const e of errors) log(`    - ${e}`);
+}
+
 /** map con concurrencia acotada */
 async function pMap(items, fn, concurrency = 8) {
   const out = new Array(items.length);
@@ -60,18 +75,33 @@ export async function runBuild({ cfg, prevDir = null, conToc = false, log = () =
 
   // ---- XLSX ----
   const xlsx = (await import('xlsx')).default;
-  const planXlsx = (await walkDir(cfg.roots.plan)).files.find((f) => f.type === 'xlsx');
-  const matXlsx = (await walkDir(cfg.roots.materiales)).files.find((f) => f.type === 'xlsx');
+  const planWalk = await walkDir(cfg.roots.plan);
+  const matWalk = await walkDir(cfg.roots.materiales);
+  logWalkErrors('plan (03)', planWalk.errors, log);
+  logWalkErrors('materiales (06)', matWalk.errors, log);
+  const planXlsx = planWalk.files.find((f) => f.type === 'xlsx');
+  const matXlsx = matWalk.files.find((f) => f.type === 'xlsx');
   if (!planXlsx) throw new Error(`no se encontró el XLSX del plan en ${cfg.roots.plan}`);
   if (!matXlsx) throw new Error(`no se encontró Listas de materiales.xlsx en ${cfg.roots.materiales}`);
   log(`plan:      ${planXlsx.name}`);
   log(`materiales: ${matXlsx.name}`);
-  const plan = parsePlan(xlsx, xlsx.readFile(path.join(cfg.roots.plan, planXlsx.relPath)));
-  const materiales = parseMateriales(xlsx, xlsx.readFile(path.join(cfg.roots.materiales, matXlsx.relPath)));
+  let plan;
+  let materiales;
+  try {
+    plan = parsePlan(xlsx, xlsx.readFile(path.join(cfg.roots.plan, planXlsx.relPath)));
+  } catch (e) {
+    throw new Error(`no se pudo leer el XLSX del plan (${planXlsx.relPath}): ${e.message}`);
+  }
+  try {
+    materiales = parseMateriales(xlsx, xlsx.readFile(path.join(cfg.roots.materiales, matXlsx.relPath)));
+  } catch (e) {
+    throw new Error(`no se pudo leer Listas de materiales.xlsx (${matXlsx.relPath}): ${e.message}`);
+  }
   for (const a of [...plan.avisos, ...materiales.avisos]) log(`  aviso XLSX: ${a}`);
 
   // ---- VMIs ----
-  const { files: vmiFiles } = await walkDir(cfg.roots.vmi);
+  const { files: vmiFiles, errors: vmiErrors } = await walkDir(cfg.roots.vmi);
+  logWalkErrors('VMI (04)', vmiErrors, log);
   const vmiPdfs = vmiFiles.filter((f) => f.type === 'pdf' && /^VMI\.[0-9]/i.test(path.basename(f.name)));
   log(`VMI: parseando ${vmiPdfs.length} PDFs...`);
   let done = 0;
@@ -93,7 +123,8 @@ export async function runBuild({ cfg, prevDir = null, conToc = false, log = () =
   log(`VMI: ${vmiRecords.length} parseados, ${sinExtraer.length} sin extraer (${(100 * sinExtraer.length / vmiRecords.length).toFixed(1)}%)`);
 
   // ---- manuales de `05` ----
-  const { files: manFiles } = await walkDir(cfg.roots.manuales);
+  const { files: manFiles, errors: manErrors } = await walkDir(cfg.roots.manuales);
+  logWalkErrors('manuales (05)', manErrors, log);
   /** @type {Record<string, any[]>} */
   const bySub = {};
   for (const f of manFiles) {
@@ -151,10 +182,11 @@ export async function runBuild({ cfg, prevDir = null, conToc = false, log = () =
       `; ${diff.cambios} cambios de origen marcados para revisión ${JSON.stringify(diff.cambiosPorEntidad)}`);
   }
 
-  let copy = { copiados: 0, excluidos: [], bytes: 0, porArea: {} };
+  let copy = { copiados: 0, excluidos: [], fallidos: [], bytes: 0, porArea: {} };
   if (cfg.bundlePdfs) {
     copy = await selectAndCopyPdfs({ roots: cfg.roots, outDir, log });
-    log(`pdfs: ${copy.copiados} copiados (${(copy.bytes / 1e6).toFixed(0)} MB), ${copy.excluidos.length} excluidos (mega-PDF)`);
+    log(`pdfs: ${copy.copiados} copiados (${(copy.bytes / 1e6).toFixed(0)} MB), ${copy.excluidos.length} excluidos (mega-PDF)` +
+      (copy.fallidos.length ? `, ${copy.fallidos.length} fallidos` : ''));
   } else {
     log('pdfs: omitidos (bundlePdfs=false)');
   }
@@ -166,7 +198,10 @@ export async function runBuild({ cfg, prevDir = null, conToc = false, log = () =
       materiales_xlsx: matXlsx.name,
       cdrom_root: cfg.cdromRoot ?? null,
     },
-    counts: { ...counts, vmi_sin_extraer: sinExtraer.length, pdfs: copy.copiados },
+    counts: { ...counts, vmi_sin_extraer: sinExtraer.length, pdfs: copy.copiados, pdfs_fallidos: copy.fallidos.length },
+    // avisos de los parsers XLSX (p. ej. hoja/columna/cabecera no encontrada):
+    // visibles en la propia carpeta de datos, no solo en el log de la consola.
+    avisos: [...plan.avisos, ...materiales.avisos],
   });
 
   return {

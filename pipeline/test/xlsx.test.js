@@ -99,3 +99,21 @@ test('parsePlan: PLAN MANTENIMIENTO matriz actividad × ciclo', () => {
   // subsistemas (BA1.01, FD5.01) no entran como actividades
   assert.ok(!act['BA1.01']);
 });
+
+test('parsePlan: PLAN MANTENIMIENTO encuentra la cabecera aunque esté más allá de la fila 20', () => {
+  const filas = Array.from({ length: 22 }, () => []); // 22 filas en blanco antes de la cabecera
+  filas.push(['CÓDIGO', 'DESCRIPCIÓN DE LAS OPERACIONES', 'MARCA SEG.', 'I1', 'I2', 'IM1', 'IM2', 'IM3', 'R1', 'R2', 'NS', 'OBSERVACIONES']);
+  filas.push(['BA1.01.01', 'Inspeccionar los componentes accesibles', '', 'X', '', '', '', '', '', '', '', '']);
+  const wb = xlsx.utils.book_new();
+  xlsx.utils.book_append_sheet(wb, xlsx.utils.aoa_to_sheet(filas), 'PLAN MANTENIMIENTO');
+
+  // el workbook de este test solo trae la hoja PLAN MANTENIMIENTO (CICLOS y
+  // PUESTA EN SERVICIO avisan aparte, ausentes a propósito -- no es lo que
+  // este test comprueba); lo que importa es que SÍ encuentre la cabecera.
+  const p = parsePlan(xlsx, wb);
+  assert.ok(
+    !p.avisos.some((a) => a.includes('PLAN MANTENIMIENTO')),
+    'no debería avisar de cabecera ausente en PLAN MANTENIMIENTO',
+  );
+  assert.ok(p.actividades.some((a) => a.codigo === 'BA1.01.01'));
+});
