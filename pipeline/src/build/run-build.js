@@ -31,6 +31,26 @@ export function logWalkErrors(area, errors, log) {
   for (const e of errors) log(`    - ${e}`);
 }
 
+/**
+ * Índice código normalizado -> registro VMI. El mismo VMI puede archivarse en
+ * más de una subcarpeta de ciclo (join.js lo deduplica igual, acumulando
+ * `ciclosCarpeta`); aquí, ante duplicados del mismo código, se prefiere el
+ * primer ejemplar que SÍ se pudo extraer -- es la fuente de `frecuencia`,
+ * `procedimiento`, etc. que sqlite-writer.js lee por código normalizado.
+ * @param {Array<{codigo:string, sinExtraer?:boolean}>} vmiRecords
+ * @returns {Map<string, any>}
+ */
+export function buildVmiByCode(vmiRecords) {
+  const vmiByCode = new Map();
+  for (const r of vmiRecords) {
+    const c = normalizarCodigo(r.codigo);
+    if (!c) continue;
+    const prev = vmiByCode.get(c);
+    if (!prev || (prev.sinExtraer && !r.sinExtraer)) vmiByCode.set(c, r);
+  }
+  return vmiByCode;
+}
+
 /** map con concurrencia acotada */
 async function pMap(items, fn, concurrency = 8) {
   const out = new Array(items.length);
@@ -152,13 +172,7 @@ export async function runBuild({ cfg, prevDir = null, conToc = false, log = () =
   const model = buildCycleModel({ plan, materiales });
   const catalog = buildCatalog({ materiales, vmiRecords });
   const join = buildJoinGraph({ plan, materiales, vmiRecords, manualesDirs, tocPorManual });
-  const vmiByCode = new Map();
-  for (const r of vmiRecords) {
-    const c = normalizarCodigo(r.codigo);
-    if (!c) continue;
-    const prev = vmiByCode.get(c);
-    if (!prev || (prev.sinExtraer && !r.sinExtraer)) vmiByCode.set(c, r);
-  }
+  const vmiByCode = buildVmiByCode(vmiRecords);
   log(`unión: ${join.resumen.sistemas} sistemas, ${join.resumen.actividades} actividades, ${join.resumen.incidencias} incidencias`);
 
   // ---- versión de carpeta de datos ----
