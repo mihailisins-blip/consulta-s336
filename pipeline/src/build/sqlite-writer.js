@@ -4,6 +4,7 @@
 
 import { promises as fs } from 'node:fs';
 import { normalizarCodigo } from '../model/codes.js';
+import { actividadesDeNivel, RDH_NIVELES } from '../model/cycles.js';
 import { openDb } from './sqlite.js';
 
 const SCHEMA = `
@@ -170,6 +171,21 @@ export async function writeDatabase(dbPath, data) {
     let orden = 0;
     for (const fase of rec.procedimiento?.fases ?? []) {
       for (const p of fase.pasos) insPaso.run(a.codigo, orden++, fase.titulo || null, p.n, p.texto);
+    }
+  }
+
+  // --- pertenencia a niveles RDH1..RDH7 (R9/R10/R12/AE3) ---
+  // El plan de mantenimiento (03) no tiene columna por nivel RDH: esas tareas
+  // solo aparecen marcadas 'NS' en su matriz (a.ciclos, arriba). La pertenencia
+  // a un RDH concreto se deriva de la columna PM del Excel de materiales
+  // (model/cycles.js: actividadesDeNivel). Se inserta solo para códigos que son
+  // actividades reales de este build, para no dejar filas de actividad_nivel
+  // colgantes cuando una tarea de materiales no tiene VMI ni fila de plan.
+  const codigosActividad = new Set(join.actividades.map((a) => a.codigo));
+  for (const nivel of RDH_NIVELES) {
+    const { codigos } = actividadesDeNivel(model, plan, nivel);
+    for (const codigo of codigos) {
+      if (codigosActividad.has(codigo)) insActNivel.run(codigo, nivel);
     }
   }
 

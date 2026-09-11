@@ -74,6 +74,38 @@ test('writeDatabase: data.sqlite abre y la búsqueda FTS devuelve la actividad',
   db.close();
 });
 
+test('actividad_nivel: los niveles RDH se pueblan desde materiales (R9/R10/R12/AE3)', async () => {
+  const plan = parsePlan(xlsx, fakePlanWorkbook());
+  const materiales = parseMateriales(xlsx, fakeMaterialesWorkbook());
+  // FC1.02.04 (RDH2) tiene VMI en este build; FC1.04.10 (RDH3, también en el
+  // fixture de materiales) no -- no debe generar una fila de actividad_nivel
+  // colgante para una tarea que no es una actividad real de este build.
+  const vmiRecords = [
+    { codigo: 'VMI.3770.FC1.02.04', relPath: 'NS/VMI.3770.FC1.02.04.pdf', ciclo: 'NS',
+      componente: null, actividadTipo: null, operacion: 'Cambio de aceite motor', edicion: null, sinExtraer: false },
+  ];
+  const model = buildCycleModel({ plan, materiales });
+  const catalog = buildCatalog({ materiales, vmiRecords });
+  const join = buildJoinGraph({ plan, materiales, vmiRecords, manualesDirs: [], tocPorManual: {} });
+  const vmiByCode = new Map(vmiRecords.map((r) => [normalizarCodigo(r.codigo), r]));
+
+  const dbPath = path.join(tmp, 'data-rdh.sqlite');
+  await writeDatabase(dbPath, { plan, materiales, model, catalog, join, vmiByCode });
+
+  const { DatabaseSync } = await import('node:sqlite');
+  const db = new DatabaseSync(dbPath, { readOnly: true });
+  assert.ok(
+    db.prepare('SELECT 1 FROM actividad_nivel WHERE actividad_codigo = ? AND nivel_codigo = ?').get('FC1.02.04', 'RDH2'),
+    'FC1.02.04 debería quedar vinculada al nivel RDH2',
+  );
+  assert.equal(
+    db.prepare('SELECT 1 FROM actividad_nivel WHERE actividad_codigo = ?').get('FC1.04.10'),
+    undefined,
+    'FC1.04.10 no tiene VMI en este build: no debe dejar una fila de actividad_nivel colgante',
+  );
+  db.close();
+});
+
 test('selectAndCopyPdfs: copia los VMI individuales y excluye los mega-PDF', async () => {
   const corpus = await makeFakeCorpus();
   const outDir = path.join(tmp, 'out1');
