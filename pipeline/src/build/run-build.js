@@ -41,6 +41,23 @@ export async function runBuild({ cfg, prevDir = null, conToc = false, log = () =
   const outDir = cfg.outDir;
   await fs.mkdir(outDir, { recursive: true });
 
+  // ---- compatibilidad de esquema con la carpeta anterior (--prev) ----
+  // Se comprueba lo antes posible, antes de gastar tiempo parseando el
+  // corpus: si la carpeta anterior es de un esquema distinto, la re-
+  // extracción no destructiva (build/diff.js) podría comparar columnas que ya
+  // no existen y generar cambio_pendiente falsos, o perder de vista overrides
+  // en silencio -- justo lo que KTD7 existe para evitar. Se aborta pronto en
+  // vez de arriesgar esa garantía.
+  const prevManifest = prevDir ? await readManifest(prevDir) : null;
+  if (prevDir && prevManifest && prevManifest.schema_version !== SCHEMA_VERSION) {
+    throw new Error(
+      `La carpeta anterior (--prev ${prevDir}) tiene esquema v${prevManifest.schema_version}, pero esta ` +
+      `CLI escribe v${SCHEMA_VERSION}. Re-extraer con --prev entre versiones de esquema distintas no está ` +
+      'soportado: podría perder overrides o generar cambios de origen falsos. Ejecuta sin --prev (los ' +
+      'overrides existentes no se traspasarán) o usa una versión de esta CLI compatible con ese esquema.',
+    );
+  }
+
   // ---- XLSX ----
   const xlsx = (await import('xlsx')).default;
   const planXlsx = (await walkDir(cfg.roots.plan)).files.find((f) => f.type === 'xlsx');
@@ -114,7 +131,6 @@ export async function runBuild({ cfg, prevDir = null, conToc = false, log = () =
   log(`unión: ${join.resumen.sistemas} sistemas, ${join.resumen.actividades} actividades, ${join.resumen.incidencias} incidencias`);
 
   // ---- versión de carpeta de datos ----
-  const prevManifest = prevDir ? await readManifest(prevDir) : null;
   const dataFolderVersion = (prevManifest?.data_folder_version ?? 0) + 1;
 
   // ---- escribir ----
@@ -130,7 +146,9 @@ export async function runBuild({ cfg, prevDir = null, conToc = false, log = () =
   if (prevDir) {
     const prevDb = path.join(prevDir, 'data.sqlite');
     diff = await carryOverridesAndDiff(dbPath, prevDb);
-    log(`diff vs ${prevDir}: ${diff.overridesCopiados} overrides y ${diff.fichasCopiadas} fichas traspasados; ${diff.cambios} cambios de origen marcados para revisión ${JSON.stringify(diff.cambiosPorEntidad)}`);
+    log(`diff vs ${prevDir}: ${diff.overridesCopiados} overrides y ${diff.fichasCopiadas} fichas traspasados` +
+      (diff.overridesHuerfanos ? ` (${diff.overridesHuerfanos} sin destino, revisar incidencias)` : '') +
+      `; ${diff.cambios} cambios de origen marcados para revisión ${JSON.stringify(diff.cambiosPorEntidad)}`);
   }
 
   let copy = { copiados: 0, excluidos: [], bytes: 0, porArea: {} };
