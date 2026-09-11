@@ -61,6 +61,43 @@ test('métricas del catálogo', () => {
   assert.equal(cat.metricas.enlaces, cat.enlaces.length);
 });
 
+test('buscaErp no fusiona una descripción corta y genérica con una entrada ERP no relacionada', () => {
+  const materiales = parseMateriales(xlsx, fakeMaterialesWorkbook());
+  // "Grasa" a secas no tiene relación con la "GRASA RENOLIT HLT2-KB" (PIEZA
+  // 23193) del fixture -- no debería fusionarse con ella solo por empezar
+  // por la misma palabra genérica.
+  const vmiRecords = [{
+    codigo: 'VMI.3770.ZZ9.01.01',
+    consumibles: {
+      aplica: true,
+      filas: [{ Descripción: 'Grasa', Referencia: '', Fabricante: '', Cantidad: '50 g', Uso: 'S' }],
+    },
+  }];
+  const cat = buildCatalog({ materiales, vmiRecords });
+
+  const grasaGenerica = cat.entradas.find((e) => e.descripcion === 'Grasa');
+  assert.ok(grasaGenerica, 'debería crear una entrada propia para "Grasa"');
+  assert.equal(grasaGenerica.codigoErp, null, 'no debería haberse fusionado con ningún PIEZA existente');
+  assert.equal(grasaGenerica.fuente, 'vmi');
+
+  const renolit = cat.entradas.find((e) => e.codigoErp === '23193');
+  assert.equal(renolit.aliases.includes('Grasa'), false, '"Grasa" no debería colarse como alias de la grasa Renolit');
+});
+
+test('buscaErp sigue fusionando cuando la descripción del VMI SÍ engloba la del ERP', () => {
+  const materiales = parseMateriales(xlsx, fakeMaterialesWorkbook());
+  const vmiRecords = [{
+    codigo: 'VMI.3770.ZZ9.01.02',
+    consumibles: {
+      aplica: true,
+      filas: [{ Descripción: 'ACEITE REDUCTOR MOBIL 75W-90 sintético', Referencia: '', Fabricante: '', Cantidad: '1 L', Uso: 'S' }],
+    },
+  }];
+  const cat = buildCatalog({ materiales, vmiRecords });
+  const aceite = cat.entradas.find((e) => e.codigoErp === '20027');
+  assert.ok(aceite.aliases.includes('ACEITE REDUCTOR MOBIL 75W-90 sintético'));
+});
+
 test('dos grafías del mismo PIEZA -> una entrada, la segunda como alias', () => {
   const wb = fakeMaterialesWorkbook([
     ['3360.01.R1', '3360.01.F.D5.01.03', 'LM.3360.01.FD5.01.03', '20027', 'ACEITE REDUCTOR MOBIL 75W90 (variante)', '1', 'UD', 'No'],

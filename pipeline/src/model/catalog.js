@@ -100,9 +100,22 @@ export function buildCatalog({ materiales, vmiRecords = [] }) {
     const nr = norm(ref);
     for (const e of porErp.values()) {
       const ne = norm(e.descripcion);
-      if (nd && (ne.includes(nd) || nd.includes(ne))) return e;
+      // "nd contiene a ne" es la dirección segura: si la descripción del VMI
+      // engloba literalmente toda la descripción canónica del ERP, es
+      // razonable asumir que es el mismo producto. La dirección contraria
+      // ("ne contiene a nd") es la arriesgada: una palabra corta y genérica
+      // del VMI ("grasa", "kit", "junta") sería substring de CUALQUIER
+      // entrada ERP que empiece por ella (p. ej. cualquier grasa del
+      // catálogo), fusionando productos distintos bajo un mismo código ERP.
+      // Se exige una longitud mínima para admitirla por ese lado -- igual
+      // que ya se exige para la referencia (nr.length >= 4) -- y que `ne` no
+      // esté vacía (una descripción en blanco no debe casar con nada).
+      if (nd && ne && (nd.includes(ne) || (nd.length >= 6 && ne.includes(nd)))) return e;
       if (nr && nr.length >= 4 && ne.includes(nr)) return e;
-      for (const a of e.aliases) if (nd && norm(a).includes(nd)) return e;
+      for (const a of e.aliases) {
+        const na = norm(a);
+        if (nd && na && nd.length >= 6 && na.includes(nd)) return e;
+      }
     }
     return null;
   };
