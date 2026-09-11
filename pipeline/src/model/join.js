@@ -98,6 +98,11 @@ export function buildJoinGraph({ plan, materiales, vmiRecords, manualesDirs = []
           actividadTipo: rec.actividadTipo ?? null,
           operacion: rec.operacion ?? null,
           edicion: rec.edicion ?? null,
+          // el contenido promocionado viene de ESTE ejemplar del VMI -- el
+          // enlace "ver el PDF original" debe apuntar al mismo, no quedarse
+          // en la primera copia (posiblemente sin extraer) que se vio.
+          vmiRelPath: rec.relPath ?? existing.vmiRelPath,
+          cicloCarpeta: rec.ciclo ?? existing.cicloCarpeta,
         });
         vmiPorCodigo.set(codigo, rec);
       }

@@ -13,7 +13,7 @@ import { buildJoinGraph } from '../model/join.js';
 import { normalizarCodigo } from '../model/codes.js';
 import { writeDatabase } from './sqlite-writer.js';
 import { carryOverridesAndDiff } from './diff.js';
-import { selectAndCopyPdfs } from './pdf-select-copy.js';
+import { selectAndCopyPdfs, esVmiIndividual } from './pdf-select-copy.js';
 import { writeManifest, readManifest, SCHEMA_VERSION } from './manifest.js';
 
 /**
@@ -102,7 +102,7 @@ export async function runBuild({ cfg, prevDir = null, conToc = false, log = () =
   // ---- VMIs ----
   const { files: vmiFiles, errors: vmiErrors } = await walkDir(cfg.roots.vmi);
   logWalkErrors('VMI (04)', vmiErrors, log);
-  const vmiPdfs = vmiFiles.filter((f) => f.type === 'pdf' && /^VMI\.[0-9]/i.test(path.basename(f.name)));
+  const vmiPdfs = vmiFiles.filter((f) => f.type === 'pdf' && esVmiIndividual(path.basename(f.name)));
   log(`VMI: parseando ${vmiPdfs.length} PDFs...`);
   let done = 0;
   const vmiRecords = await pMap(vmiPdfs, async (f) => {

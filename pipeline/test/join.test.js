@@ -49,6 +49,33 @@ test('une VMI ⇄ plan ⇄ materiales ⇄ manual por el sufijo de código', () =
   assert.equal(sisFd5.manuales.length, 1);
 });
 
+test('al promocionar un duplicado no-sinExtraer, vmiRelPath y cicloCarpeta pasan a apuntar a ese ejemplar', () => {
+  const g = buildJoinGraph({
+    plan, materiales,
+    vmiRecords: [
+      // el mismo VMI archivado en dos subcarpetas de ciclo; el primero visto
+      // no se pudo extraer, el segundo sí -- el contenido se promociona desde
+      // el segundo, y el enlace "ver el PDF original" debe seguirlo.
+      { codigo: 'VMI.3770.FD5.01.02', relPath: 'I1/VMI.3770.FD5.01.02.pdf', ciclo: 'I1', sinExtraer: true, motivo: 'x' },
+      { codigo: 'VMI.3770.FD5.01.02', relPath: 'IM1/VMI.3770.FD5.01.02.pdf', ciclo: 'IM1', componente: 'REDUCTOR Y ACOPLAMIENTO' },
+    ],
+    manualesDirs, tocPorManual: {},
+  });
+  const fd5 = g.actividades.find((a) => a.codigo === 'FD5.01.02');
+  assert.equal(fd5.sinExtraer, false);
+  assert.equal(fd5.componente, 'REDUCTOR Y ACOPLAMIENTO');
+  assert.equal(
+    fd5.vmiRelPath, 'IM1/VMI.3770.FD5.01.02.pdf',
+    'debería apuntar al ejemplar del que se promocionó el contenido, no al primero visto',
+  );
+  assert.equal(fd5.cicloCarpeta, 'IM1');
+  // ambas rutas se siguen acumulando en la lista plural
+  assert.deepEqual(
+    [...fd5.vmiRelPaths].sort(),
+    ['I1/VMI.3770.FD5.01.02.pdf', 'IM1/VMI.3770.FD5.01.02.pdf'].sort(),
+  );
+});
+
 test('incidencia: VMI de un sistema que no está en `05` ni en el plan', () => {
   const g = buildJoinGraph({
     plan, materiales,
