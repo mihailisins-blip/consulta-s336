@@ -1,0 +1,6 @@
+config/
+
+.cache-*.json
+_*.mjs
+
+_*.log
