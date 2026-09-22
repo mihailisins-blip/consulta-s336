@@ -110,10 +110,21 @@ export async function writeDatabase(dbPath, data) {
   await fs.rm(`${dbPath}-wal`, { force: true });
   await fs.rm(`${dbPath}-shm`, { force: true });
   const db = await openDb(dbPath);
-  db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;');
-  db.exec(SCHEMA);
-  db.exec('BEGIN');
+  try {
+    db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;');
+    db.exec(SCHEMA);
+    db.exec('BEGIN');
+    return writeAll(db, { plan, materiales, model, catalog, join, vmiByCode, meta });
+  } catch (err) {
+    try { db.exec('ROLLBACK'); } catch { /* no había transacción abierta, o la conexión ya es inválida */ }
+    throw err;
+  } finally {
+    db.close();
+  }
+}
 
+/** Cuerpo de la escritura, ya dentro de BEGIN..COMMIT (ver writeDatabase). Todo síncrono -- node:sqlite no expone una API async. */
+function writeAll(db, { plan, materiales, model, catalog, join, vmiByCode, meta }) {
   const run = (sql, ...params) => db.prepare(sql).run(...params);
   for (const [k, v] of Object.entries(meta)) run('INSERT INTO meta VALUES (?,?)', k, String(v));
 
@@ -232,7 +243,6 @@ export async function writeDatabase(dbPath, data) {
     incidencias: db.prepare('SELECT count(*) c FROM incidencia_extraccion').get().c,
     busqueda: db.prepare('SELECT count(*) c FROM busqueda').get().c,
   };
-  db.close();
   return { counts };
 }
 

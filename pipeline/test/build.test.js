@@ -74,6 +74,37 @@ test('writeDatabase: data.sqlite abre y la búsqueda FTS devuelve la actividad',
   db.close();
 });
 
+test('writeDatabase: un fallo a mitad de la escritura hace ROLLBACK y cierra el handle', async () => {
+  const plan = parsePlan(xlsx, fakePlanWorkbook());
+  const materiales = parseMateriales(xlsx, fakeMaterialesWorkbook());
+  const vmiRecords = [Object.assign(vmi('VMI.3770.FD5.02.04'), { relPath: 'IM1/VMI.3770.FD5.02.04.pdf', ciclo: 'IM1' })];
+  const model = buildCycleModel({ plan, materiales });
+  const catalog = buildCatalog({ materiales, vmiRecords });
+  const join = buildJoinGraph({
+    plan, materiales, vmiRecords,
+    manualesDirs: [{ name: 'BB21106005034 FD5 Reductor y acoplamiento', relPath: 'x', files: [{ relPath: 'x/m.pdf' }] }],
+    tocPorManual: {},
+  });
+  // corrompe a propósito: un código de sistema que no es un tipo que
+  // node:sqlite pueda bindear -- fuerza un fallo real a mitad de la
+  // transacción, DESPUÉS de que nivel_ciclo/lote ya se hayan insertado.
+  join.sistemas[0].codigo = { no: 'un tipo válido para sqlite' };
+
+  const dbPath = path.join(tmp, 'data-fail.sqlite');
+  await assert.rejects(
+    writeDatabase(dbPath, { plan, materiales, model, catalog, join, vmiByCode: new Map() }),
+  );
+
+  // el ROLLBACK debe haber deshecho las filas ya insertadas, y el handle
+  // debe haberse cerrado -- la base se reabre sin bloqueo; las tablas
+  // existen (la DDL corre en autocommit, antes del BEGIN) pero sin filas.
+  const { DatabaseSync } = await import('node:sqlite');
+  const db = new DatabaseSync(dbPath, { readOnly: true });
+  assert.equal(db.prepare('SELECT count(*) c FROM nivel_ciclo').get().c, 0);
+  assert.equal(db.prepare('SELECT count(*) c FROM sistema').get().c, 0);
+  db.close();
+});
+
 test('actividad_nivel: los niveles RDH se pueblan desde materiales (R9/R10/R12/AE3)', async () => {
   const plan = parsePlan(xlsx, fakePlanWorkbook());
   const materiales = parseMateriales(xlsx, fakeMaterialesWorkbook());

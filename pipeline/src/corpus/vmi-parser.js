@@ -42,8 +42,9 @@ const rePartRef = /^\d{3}\s+\S/;
  */
 function cleanLines(lines) {
   return lines.filter((l) => {
+    // el pie real trae la fecha y la paginación en la misma línea
+    // ("Fecha: DD.MM.AAAA ... Página N / M"), así que basta con reFooter.
     if (reFooter.test(l.text)) return false;
-    if (/^Fecha:\s*\d{2}\.\d{2}\.\d{4}\b/.test(l.text) && reFooter.test(l.text)) return false;
     if (reBareCode.test(l.text.trim())) return false;
     // cabecera de página repetida (título de sección a y>=785 en páginas >1)
     if (l.page > 1 && l.y >= 785) return false;
