@@ -1,7 +1,10 @@
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
+import 'package:sqlite3/sqlite3.dart';
 
 import 'data/data_folder.dart';
+import 'data/db.dart';
+import 'hub/hub_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,8 +33,8 @@ class ConsultaS336App extends StatelessWidget {
 }
 
 /// Punto de entrada real de la app: resuelve y valida la carpeta de datos
-/// antes de mostrar nada más (R25 / AE6). U10 sustituirá el marcador de
-/// posición de "carpeta cargada" por el panel-hub real.
+/// antes de mostrar nada más (R25 / AE6), luego abre data.sqlite y muestra
+/// el panel-hub (U10).
 class _DataFolderGate extends StatefulWidget {
   final DataFolderResult? resultOverride;
   const _DataFolderGate({this.resultOverride});
@@ -42,6 +45,7 @@ class _DataFolderGate extends StatefulWidget {
 
 class _DataFolderGateState extends State<_DataFolderGate> {
   late final Future<DataFolderResult> _future;
+  Database? _db;
 
   @override
   void initState() {
@@ -49,6 +53,12 @@ class _DataFolderGateState extends State<_DataFolderGate> {
     _future = widget.resultOverride != null
         ? Future.value(widget.resultOverride)
         : loadDataFolder(resolveDataDir(allowDebugOverride: kDebugMode));
+  }
+
+  @override
+  void dispose() {
+    _db?.dispose();
+    super.dispose();
   }
 
   @override
@@ -63,12 +73,12 @@ class _DataFolderGateState extends State<_DataFolderGate> {
         }
         final result = snapshot.data!;
         return switch (result) {
-          DataFolderReady() => _DataReadyPlaceholder(result: result),
+          DataFolderReady() => HubScreen(db: _db ??= openDataDb(result.dbPath)),
           DataFolderMissing() => _DataFolderProblemScreen(
             title: 'No se encuentra la carpeta de datos',
             message:
                 'Se esperaba en:\n${result.expectedPath}\n\n'
-                'Coloca la carpeta "data" junto al ejecutable, o pide una al curador.',
+                'Coloca la carpeta "datos" junto al ejecutable, o pide una al curador.',
           ),
           DataFolderVersionMismatch() => _DataFolderProblemScreen(
             title: 'Carpeta de datos incompatible',
@@ -116,38 +126,6 @@ class _DataFolderProblemScreen extends StatelessWidget {
               Text(message, textAlign: TextAlign.center),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Marcador de posición hasta que U10 construya el panel-hub real (búsqueda
-/// global + por sistema / por ciclo / catálogo / recientes).
-class _DataReadyPlaceholder extends StatelessWidget {
-  final DataFolderReady result;
-  const _DataReadyPlaceholder({required this.result});
-
-  @override
-  Widget build(BuildContext context) {
-    final m = result.manifest;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Consulta S336')),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Carpeta de datos v${m.dataFolderVersion} cargada',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 8),
-            Text(result.dataDir, style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: 16),
-            for (final entry in m.counts.entries)
-              Text('${entry.key}: ${entry.value}'),
-          ],
         ),
       ),
     );

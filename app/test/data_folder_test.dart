@@ -85,7 +85,7 @@ void main() {
 
   test('resolveDataDir sin override -> junto al ejecutable (R24)', () {
     final dataDir = resolveDataDir();
-    expect(p.basename(dataDir), 'data');
+    expect(p.basename(dataDir), 'datos');
     expect(p.dirname(dataDir), p.dirname(Platform.resolvedExecutable));
   });
 
@@ -96,6 +96,6 @@ void main() {
     // tiempo de ejecución de test sin recompilar, así que el contrato real
     // (solo debug) se aplica en main.dart, no aquí.
     final dataDir = resolveDataDir(allowDebugOverride: false);
-    expect(p.basename(dataDir), 'data');
+    expect(p.basename(dataDir), 'datos');
   });
 }

@@ -4,13 +4,18 @@
 // Deliberadamente NO se usa E/S real de archivos aquí (a diferencia de
 // data_folder_test.dart, que sí la prueba): combinar dart:io real dentro de
 // un FutureBuilder con pumpAndSettle() no es fiable en un widget test -- se
-// queda colgado indefinidamente en vez de fallar rápido. Estos tests solo
-// prueban que la UI renderiza cada DataFolderResult correctamente.
+// queda colgado indefinidamente en vez de fallar rápido. El caso "listo" SÍ
+// abre el data.sqlite real de fixtures/ (HubScreen lo necesita de verdad
+// para consultar) -- lo que se inyecta es el *resultado* de loadDataFolder,
+// no la carga de archivos en sí.
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:consulta_s336_app/data/data_folder.dart';
 import 'package:consulta_s336_app/main.dart';
+
+import 'helpers/real_db.dart';
 
 const _manifestBase = (
   buildDate: '2026-09-01T00:00:00.000Z',
@@ -19,11 +24,11 @@ const _manifestBase = (
 
 void main() {
   testWidgets(
-    'con una carpeta de datos válida, la app llega a la pantalla de "cargada" (AE6, caso compatible)',
+    'con una carpeta de datos válida, la app llega al hub (búsqueda + accesos)',
     (tester) async {
       final result = DataFolderReady(
         dataDir: r'C:\ruta\a\data',
-        dbPath: r'C:\ruta\a\data\data.sqlite',
+        dbPath: realFixtureDbPath,
         manifest: DataManifest(
           schemaVersion: kExpectedSchemaVersion,
           dataFolderVersion: 5,
@@ -37,8 +42,12 @@ void main() {
       await tester.pumpWidget(ConsultaS336App(resultOverride: result));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('v5 cargada'), findsOneWidget);
-      expect(find.textContaining('438'), findsOneWidget);
+      expect(find.text('Consulta S336'), findsOneWidget);
+      expect(find.byType(TextField), findsOneWidget);
+      expect(find.text('Por sistema'), findsOneWidget);
+      expect(find.text('Por ciclo'), findsOneWidget);
+      expect(find.text('Catálogo'), findsOneWidget);
+      expect(find.text('Últimas consultadas'), findsOneWidget);
     },
   );
 
@@ -56,7 +65,7 @@ void main() {
   );
 
   testWidgets(
-    'con schema_version incompatible, muestra el aviso de incompatibilidad y no la de "cargada" (AE6)',
+    'con schema_version incompatible, muestra el aviso de incompatibilidad y no llega al hub (AE6)',
     (tester) async {
       final result = DataFolderVersionMismatch(
         DataManifest(
@@ -74,7 +83,7 @@ void main() {
 
       expect(find.textContaining('incompatible'), findsOneWidget);
       expect(find.textContaining('v99'), findsOneWidget);
-      expect(find.textContaining('cargada'), findsNothing);
+      expect(find.text('Consulta S336'), findsNothing);
     },
   );
 

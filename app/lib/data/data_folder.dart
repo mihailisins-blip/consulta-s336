@@ -14,7 +14,8 @@ import 'package:path/path.dart' as p;
 
 /// Versión de esquema que este binario sabe leer (KTD3 / R25).
 /// Debe coincidir con `SCHEMA_VERSION` en `pipeline/src/build/manifest.js`.
-const int kExpectedSchemaVersion = 1;
+/// v2 (2026-09-23) añadió la tabla `actividad_lote` (R11/R12/AE3).
+const int kExpectedSchemaVersion = 2;
 
 /// Resultado de intentar cargar la carpeta de datos. Sellada a propósito:
 /// el llamador (main.dart) debe manejar los cuatro casos explícitamente.
@@ -91,6 +92,16 @@ class DataManifest {
   }
 }
 
+/// Nombre de la carpeta de datos, junto al ejecutable. NO se llama "data" a
+/// propósito: el propio runner de Flutter Windows ya usa
+/// `<exeDir>/data/` para sus archivos de runtime (`flutter_assets/`,
+/// `icudtl.dat`, el kernel JIT en debug o `app.so` en release) -- lo
+/// descubrió una verificación real de punta a punta (el .exe no arrancaba,
+/// "could not resolve the kernel binary", tras copiar ahí la carpeta de
+/// datos de la app tal cual). R24 solo pide "junto al ejecutable", no un
+/// nombre concreto.
+const String kDataDirName = 'datos';
+
 /// Resuelve la carpeta de datos: junto al ejecutable en producción (R24).
 ///
 /// `allowDebugOverride` (pásalo como `kDebugMode` desde main.dart, nunca a
@@ -104,7 +115,7 @@ String resolveDataDir({bool allowDebugOverride = false}) {
     if (override.isNotEmpty) return override;
   }
   final exeDir = p.dirname(Platform.resolvedExecutable);
-  return p.join(exeDir, 'data');
+  return p.join(exeDir, kDataDirName);
 }
 
 /// Carga y valida la carpeta de datos en `dataDir`. No lanza excepciones
