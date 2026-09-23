@@ -468,6 +468,51 @@ List<ManualTocEntry> listManualToc(Database db, int manualId) {
   ];
 }
 
+/// Una actividad que usa una entrada de catálogo concreta, con la
+/// cantidad y el uso (S/SC) de ESE enlace -- pueden variar entre
+/// actividades para la misma entrada (KTD5).
+class ActividadUso {
+  final String actividadCodigo;
+  final String? descripcionActividad;
+  final String? cant;
+  final String? ud;
+  final String? uso;
+  const ActividadUso({
+    required this.actividadCodigo,
+    required this.descripcionActividad,
+    required this.cant,
+    required this.ud,
+    required this.uso,
+  });
+}
+
+/// Actividades que usan una entrada de catálogo concreta (R17/AE7): el
+/// filtro bidireccional actividad<->material, en el sentido
+/// material->actividades. Cualquier ciclo -- no se restringe a uno.
+List<ActividadUso> actividadesQueUsan(Database db, String catalogoId) {
+  final rows = db.select(
+    '''
+    SELECT am.actividad_codigo, a.operacion, a.descripcion_plan, am.cant, am.ud, am.uso
+    FROM actividad_material am
+    JOIN actividad a ON a.codigo = am.actividad_codigo
+    WHERE am.catalogo_id = ?
+    ORDER BY am.actividad_codigo
+    ''',
+    [catalogoId],
+  );
+  return [
+    for (final r in rows)
+      ActividadUso(
+        actividadCodigo: r['actividad_codigo'] as String,
+        descripcionActividad:
+            (r['operacion'] as String?) ?? (r['descripcion_plan'] as String?),
+        cant: r['cant'] as String?,
+        ud: r['ud'] as String?,
+        uso: r['uso'] as String?,
+      ),
+  ];
+}
+
 /// Todas las entradas del catálogo, ordenadas por descripción.
 List<CatalogoEntrada> listCatalogo(Database db) {
   final rows = db.select(

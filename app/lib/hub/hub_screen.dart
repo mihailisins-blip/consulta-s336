@@ -60,7 +60,13 @@ class _HubScreenState extends State<HubScreen> {
       case SearchResultType.catalogo:
         _recientes.registrar(RecienteEntry(tipo: 'catalogo', id: r.id, titulo: r.titulo));
         Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => CatalogoScreen(db: widget.db, recientes: _recientes)),
+          MaterialPageRoute(
+            builder: (_) => CatalogoScreen(
+              db: widget.db,
+              dataDir: widget.dataDir,
+              recientes: _recientes,
+            ),
+          ),
         );
       case SearchResultType.actividad:
         Navigator.of(context).push(
@@ -154,7 +160,11 @@ class _HubScreenState extends State<HubScreen> {
                   label: 'Catálogo',
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => CatalogoScreen(db: widget.db, recientes: _recientes),
+                      builder: (_) => CatalogoScreen(
+                        db: widget.db,
+                        dataDir: widget.dataDir,
+                        recientes: _recientes,
+                      ),
                     ),
                   ),
                 ),
