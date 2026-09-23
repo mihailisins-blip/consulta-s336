@@ -29,6 +29,10 @@ CREATE TABLE nivel_ciclo (
 );
 CREATE TABLE lote (nivel TEXT, codigo TEXT);
 CREATE TABLE actividad_nivel (actividad_codigo TEXT, nivel_codigo TEXT);
+-- Qué actividad cae en qué lote (R11/R12/AE3: desglose por lote de un nivel
+-- partido) -- distinto de la tabla lote, que solo lista qué lotes existen
+-- por nivel, sin decir qué actividad va en cada uno.
+CREATE TABLE actividad_lote (actividad_codigo TEXT, lote_codigo TEXT);
 
 CREATE TABLE actividad (
   codigo TEXT PRIMARY KEY,
@@ -197,6 +201,16 @@ function writeAll(db, { plan, materiales, model, catalog, join, vmiByCode, meta 
     const { codigos } = actividadesDeNivel(model, plan, nivel);
     for (const codigo of codigos) {
       if (codigosActividad.has(codigo)) insActNivel.run(codigo, nivel);
+    }
+  }
+
+  // --- actividad <-> lote (R11/R12/AE3: desglose por lote) ---
+  // Igual criterio que arriba: solo para códigos que son actividades reales
+  // de este build, no para cualquier tarea que aparezca en materiales.
+  const insActLote = db.prepare('INSERT INTO actividad_lote VALUES (?,?)');
+  for (const [loteCodigo, codigos] of Object.entries(model.actividadesPorLote ?? {})) {
+    for (const codigo of codigos) {
+      if (codigosActividad.has(codigo)) insActLote.run(codigo, loteCodigo);
     }
   }
 

@@ -3,7 +3,11 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
-export const SCHEMA_VERSION = 1;
+// v2 (2026-09-23): añade la tabla actividad_lote (Fase B / U10 — R11/R12/AE3
+// necesitan saber qué actividad cae en qué lote, no solo qué lotes existen
+// por nivel). Una carpeta de datos v1 sigue siendo válida en todo lo demás,
+// pero re-extráela para que el desglose por lote deje de estar vacío.
+export const SCHEMA_VERSION = 2;
 
 /**
  * @param {string} outDir
