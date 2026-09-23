@@ -135,6 +135,37 @@ export async function carryOverridesAndDiff(newDbPath, prevDbPath) {
       }
     }
 
+    // 3. diff de pertenencia a lote (R11/R12/AE3) -- actividad_lote es una
+    // tabla de pertenencia muchos-a-muchos (una actividad puede estar en
+    // más de un lote), así que no encaja en el bucle de COMPARABLES de
+    // arriba (una fila por clave, campos escalares): aquí "cambió" quiere
+    // decir que el CONJUNTO de lotes de una actividad es distinto, no que
+    // cambió un campo. Solo se compara para actividades que ya existían en
+    // la carpeta anterior, igual que el diff de campos de arriba (una
+    // actividad nueva no es un "cambio de origen" que confunda al
+    // curador).
+    const lotesPorActividad = (db) => {
+      const map = new Map();
+      for (const r of db.prepare('SELECT actividad_codigo, lote_codigo FROM actividad_lote').all()) {
+        if (!map.has(r.actividad_codigo)) map.set(r.actividad_codigo, new Set());
+        map.get(r.actividad_codigo).add(r.lote_codigo);
+      }
+      return map;
+    };
+    const lotesPrev = lotesPorActividad(prev);
+    const lotesNext = lotesPorActividad(next);
+    const prevActividadCodigos = new Set(prev.prepare('SELECT codigo FROM actividad').all().map((r) => r.codigo));
+    for (const codigo of new Set([...lotesPrev.keys(), ...lotesNext.keys()])) {
+      if (!prevActividadCodigos.has(codigo)) continue;
+      const antes = [...(lotesPrev.get(codigo) ?? [])].sort().join(',');
+      const despues = [...(lotesNext.get(codigo) ?? [])].sort().join(',');
+      if (antes !== despues) {
+        insCambio.run('actividad_lote', codigo, 'lote_codigo', antes || null, despues || null);
+        cambios++;
+        cambiosPorEntidad.actividad_lote = (cambiosPorEntidad.actividad_lote ?? 0) + 1;
+      }
+    }
+
     next.exec('COMMIT');
     return { overridesCopiados, overridesHuerfanos, fichasCopiadas, cambios, cambiosPorEntidad };
   } catch (err) {
