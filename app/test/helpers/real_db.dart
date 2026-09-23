@@ -16,12 +16,13 @@ String get realFixtureDbPath =>
 Database openRealFixtureDb() =>
     sqlite3.open(realFixtureDbPath, mode: OpenMode.readOnly);
 
-/// Ruta al fixture real pequeño (esquema v2, generado por
+/// Ruta al fixture real pequeño (esquema v3, generado por
 /// pipeline/scripts/gen-app-fixture.mjs a partir de los mismos VMI/XLSX
 /// reales que usan los tests de pipeline/ -- ver fixtures/README.md).
 String get realSmallFixtureDbPath =>
     p.join('test', 'fixtures', 'data-lotes.sqlite');
 
-/// Abre el fixture real pequeño (esquema v2, con actividad_lote) en solo lectura.
+/// Abre el fixture real pequeño (esquema v3, con actividad_lote y
+/// actividad.seguridad) en solo lectura.
 Database openRealSmallFixtureDb() =>
     sqlite3.open(realSmallFixtureDbPath, mode: OpenMode.readOnly);

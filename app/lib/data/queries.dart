@@ -84,6 +84,94 @@ class ActividadesDeNivel {
   });
 }
 
+class ActividadPaso {
+  final String? fase;
+  final int n;
+  final String texto;
+  const ActividadPaso({required this.fase, required this.n, required this.texto});
+}
+
+/// Fila de la tabla de herramientas/consumibles/repuestos del detalle
+/// (R6): `catalogo.tipo` distingue herramienta de consumible/material;
+/// cantidad y uso (S/SC) viven en el enlace, no en la entrada de catálogo
+/// (KTD5), así que salen de `actividad_material`, no de `catalogo`.
+class ActividadMaterial {
+  final String tipo; // 'herramienta' | 'consumible' | 'material'
+  final String? descripcion;
+  final String? referencia;
+  final String? fabricante;
+  final String? cant;
+  final String? ud;
+  final String? uso; // 'S' | 'SC' | null
+  const ActividadMaterial({
+    required this.tipo,
+    required this.descripcion,
+    required this.referencia,
+    required this.fabricante,
+    required this.cant,
+    required this.ud,
+    required this.uso,
+  });
+}
+
+class ActividadDetalle {
+  final String codigo;
+  final String? edicion;
+  final String? sistemaCodigo;
+  final String? componente;
+  final String? actividadTipo;
+  final String? operacion;
+  final String? frecuencia;
+  final String? descripcionPlan;
+  final String? zonasTrabajo;
+
+  /// Texto de la sección 1 del VMI ("Medidas de seguridad"), null si el VMI
+  /// no se pudo extraer o es de una carpeta de datos anterior a v3. Se
+  /// muestra colapsado, no estructurado (R6/KTD9).
+  final String? seguridad;
+  final bool sinExtraer;
+  final String? motivo;
+
+  /// Ruta del VMI relativa a `<dataDir>/pdfs/vmi/`, null si no hay VMI
+  /// vinculado (p. ej. una actividad que solo viene del plan).
+  final String? vmiRelPath;
+  final List<String> niveles;
+  final List<ActividadPaso> pasos;
+  final List<ActividadMaterial> materiales;
+
+  const ActividadDetalle({
+    required this.codigo,
+    required this.edicion,
+    required this.sistemaCodigo,
+    required this.componente,
+    required this.actividadTipo,
+    required this.operacion,
+    required this.frecuencia,
+    required this.descripcionPlan,
+    required this.zonasTrabajo,
+    required this.seguridad,
+    required this.sinExtraer,
+    required this.motivo,
+    required this.vmiRelPath,
+    required this.niveles,
+    required this.pasos,
+    required this.materiales,
+  });
+}
+
+class ManualTocEntry {
+  final int orden;
+  final String? titulo;
+  final int? pagina;
+  final int? nivel;
+  const ManualTocEntry({
+    required this.orden,
+    required this.titulo,
+    required this.pagina,
+    required this.nivel,
+  });
+}
+
 class CatalogoEntrada {
   final String id;
   final String? codigoErp;
@@ -277,6 +365,107 @@ Map<String, String> sistemasDe(Database db, List<String> codigos) {
   return {
     for (final r in rows) r['codigo'] as String: r['sistema_codigo'] as String,
   };
+}
+
+/// Programa ('km' | 'horas' | 'ns') de un nivel de ciclo, o null si el
+/// código no existe -- para deep-linkear a "por ciclo" desde un nivel
+/// concreto sin que el llamador tenga que adivinar a qué programa pertenece.
+String? programaDeNivel(Database db, String nivelCodigo) {
+  final rows = db.select(
+    'SELECT programa FROM nivel_ciclo WHERE codigo = ?',
+    [nivelCodigo],
+  );
+  return rows.isEmpty ? null : rows.first['programa'] as String;
+}
+
+/// Detalle completo de una actividad para el panel de U11 (R6): cabecera,
+/// niveles en que aplica, tablas de herramientas/consumibles/repuestos con
+/// cantidad y uso, y el procedimiento paso a paso. Null si el código no
+/// existe.
+ActividadDetalle? getActividadDetalle(Database db, String codigo) {
+  final rows = db.select('SELECT * FROM actividad WHERE codigo = ?', [codigo]);
+  if (rows.isEmpty) return null;
+  final r = rows.first;
+
+  final nivelRows = db.select(
+    'SELECT DISTINCT nivel_codigo FROM actividad_nivel WHERE actividad_codigo = ? ORDER BY nivel_codigo',
+    [codigo],
+  );
+  final niveles = [for (final nr in nivelRows) nr['nivel_codigo'] as String];
+
+  final pasoRows = db.select(
+    'SELECT fase, paso_n, texto FROM actividad_paso WHERE actividad_codigo = ? ORDER BY orden',
+    [codigo],
+  );
+  final pasos = [
+    for (final pr in pasoRows)
+      ActividadPaso(
+        fase: pr['fase'] as String?,
+        n: pr['paso_n'] as int,
+        texto: pr['texto'] as String,
+      ),
+  ];
+
+  final matRows = db.select(
+    '''
+    SELECT c.tipo, c.descripcion, c.referencia, c.fabricante, am.cant, am.ud, am.uso
+    FROM actividad_material am
+    JOIN catalogo c ON c.id = am.catalogo_id
+    WHERE am.actividad_codigo = ?
+    ORDER BY c.tipo, c.descripcion
+    ''',
+    [codigo],
+  );
+  final materiales = [
+    for (final mr in matRows)
+      ActividadMaterial(
+        tipo: mr['tipo'] as String,
+        descripcion: mr['descripcion'] as String?,
+        referencia: mr['referencia'] as String?,
+        fabricante: mr['fabricante'] as String?,
+        cant: mr['cant'] as String?,
+        ud: mr['ud'] as String?,
+        uso: mr['uso'] as String?,
+      ),
+  ];
+
+  return ActividadDetalle(
+    codigo: r['codigo'] as String,
+    edicion: r['edicion'] as String?,
+    sistemaCodigo: r['sistema_codigo'] as String?,
+    componente: r['componente'] as String?,
+    actividadTipo: r['actividad_tipo'] as String?,
+    operacion: r['operacion'] as String?,
+    frecuencia: r['frecuencia'] as String?,
+    descripcionPlan: r['descripcion_plan'] as String?,
+    zonasTrabajo: r['zonas_trabajo'] as String?,
+    seguridad: r['seguridad'] as String?,
+    sinExtraer: (r['sin_extraer'] as int) != 0,
+    motivo: r['motivo'] as String?,
+    vmiRelPath: r['vmi_rel_path'] as String?,
+    niveles: niveles,
+    pasos: pasos,
+    materiales: materiales,
+  );
+}
+
+/// Índice de secciones de un manual (R16/KTD8): vacío si el PDF no traía
+/// outline/marcadores utilizable -- el visor entonces abre en la página 1
+/// (AE de degradación anotada en el plan, no un error).
+List<ManualTocEntry> listManualToc(Database db, int manualId) {
+  final rows = db.select(
+    'SELECT orden, titulo, pagina, nivel FROM manual_toc WHERE manual_id = ? ORDER BY orden',
+    [manualId],
+  );
+  return [
+    for (final r in rows)
+      ManualTocEntry(
+        orden: r['orden'] as int,
+        titulo: r['titulo'] as String?,
+        pagina: r['pagina'] as int?,
+        nivel: r['nivel'] as int?,
+      ),
+  ];
 }
 
 /// Todas las entradas del catálogo, ordenadas por descripción.

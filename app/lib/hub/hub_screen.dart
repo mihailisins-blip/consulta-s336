@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:sqlite3/sqlite3.dart';
 
+import '../detalle/actividad_detalle.dart';
 import '../search/search_service.dart';
 import 'catalogo_screen.dart';
 import 'por_ciclo_screen.dart';
@@ -12,7 +13,8 @@ import 'recientes.dart';
 
 class HubScreen extends StatefulWidget {
   final Database db;
-  const HubScreen({super.key, required this.db});
+  final String dataDir;
+  const HubScreen({super.key, required this.db, required this.dataDir});
 
   @override
   State<HubScreen> createState() => _HubScreenState();
@@ -47,7 +49,12 @@ class _HubScreenState extends State<HubScreen> {
         _recientes.registrar(RecienteEntry(tipo: 'sistema', id: r.id, titulo: r.titulo));
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => SistemaDetalleScreen(db: widget.db, codigo: r.id),
+            builder: (_) => SistemaDetalleScreen(
+              db: widget.db,
+              dataDir: widget.dataDir,
+              codigo: r.id,
+              recientes: _recientes,
+            ),
           ),
         );
       case SearchResultType.catalogo:
@@ -56,16 +63,16 @@ class _HubScreenState extends State<HubScreen> {
           MaterialPageRoute(builder: (_) => CatalogoScreen(db: widget.db, recientes: _recientes)),
         );
       case SearchResultType.actividad:
-        // U11 (detalle de actividad) todavía no existe -- de momento se
-        // aterriza en la ficha de su sistema, que ya lista la actividad.
-        final sistema = r.chips.isNotEmpty ? r.chips.first : null;
-        if (sistema != null) {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => SistemaDetalleScreen(db: widget.db, codigo: sistema),
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ActividadDetalleScreen(
+              db: widget.db,
+              dataDir: widget.dataDir,
+              codigo: r.id,
+              recientes: _recientes,
             ),
-          );
-        }
+          ),
+        );
     }
   }
 
@@ -121,7 +128,11 @@ class _HubScreenState extends State<HubScreen> {
                   label: 'Por sistema',
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => PorSistemaScreen(db: widget.db, recientes: _recientes),
+                      builder: (_) => PorSistemaScreen(
+                        db: widget.db,
+                        dataDir: widget.dataDir,
+                        recientes: _recientes,
+                      ),
                     ),
                   ),
                 ),
@@ -130,7 +141,11 @@ class _HubScreenState extends State<HubScreen> {
                   label: 'Por ciclo',
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => PorCicloScreen(db: widget.db, recientes: _recientes),
+                      builder: (_) => PorCicloScreen(
+                        db: widget.db,
+                        dataDir: widget.dataDir,
+                        recientes: _recientes,
+                      ),
                     ),
                   ),
                 ),
@@ -185,6 +200,7 @@ class _HubScreenState extends State<HubScreen> {
     'sistema' => Icons.category_outlined,
     'ciclo' => Icons.timeline_outlined,
     'catalogo' => Icons.inventory_2_outlined,
+    'actividad' => Icons.build_outlined,
     _ => Icons.history,
   };
 }

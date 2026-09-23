@@ -73,7 +73,10 @@ class _DataFolderGateState extends State<_DataFolderGate> {
         }
         final result = snapshot.data!;
         return switch (result) {
-          DataFolderReady() => HubScreen(db: _db ??= openDataDb(result.dbPath)),
+          DataFolderReady() => HubScreen(
+            db: _db ??= openDataDb(result.dbPath),
+            dataDir: result.dataDir,
+          ),
           DataFolderMissing() => _DataFolderProblemScreen(
             title: 'No se encuentra la carpeta de datos',
             message:

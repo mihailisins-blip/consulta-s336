@@ -8,7 +8,7 @@
 import 'package:flutter/foundation.dart';
 
 class RecienteEntry {
-  final String tipo; // 'sistema' | 'ciclo' | 'catalogo'
+  final String tipo; // 'sistema' | 'ciclo' | 'catalogo' | 'actividad'
   final String id;
   final String titulo;
   const RecienteEntry({required this.tipo, required this.id, required this.titulo});

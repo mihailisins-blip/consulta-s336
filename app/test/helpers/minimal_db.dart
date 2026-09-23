@@ -20,7 +20,22 @@ Database openMinimalTestDb() {
     CREATE TABLE lote (nivel TEXT, codigo TEXT);
     CREATE TABLE actividad_nivel (actividad_codigo TEXT, nivel_codigo TEXT);
     CREATE TABLE actividad_lote (actividad_codigo TEXT, lote_codigo TEXT);
-    CREATE TABLE actividad (codigo TEXT PRIMARY KEY, sistema_codigo TEXT);
+    CREATE TABLE actividad (
+      codigo TEXT PRIMARY KEY, sistema_codigo TEXT, vmi_rel_path TEXT,
+      sin_extraer INTEGER DEFAULT 0, motivo TEXT, componente TEXT, actividad_tipo TEXT,
+      operacion TEXT, frecuencia TEXT, edicion TEXT, descripcion_plan TEXT,
+      zonas_trabajo TEXT, seguridad TEXT
+    );
+    CREATE TABLE actividad_paso (actividad_codigo TEXT, orden INTEGER, fase TEXT, paso_n INTEGER, texto TEXT);
+    CREATE TABLE catalogo (
+      id TEXT PRIMARY KEY, codigo_erp TEXT, descripcion TEXT, fabricante TEXT,
+      referencia TEXT, unidad TEXT, tipo TEXT, fuente TEXT
+    );
+    CREATE TABLE actividad_material (
+      actividad_codigo TEXT, catalogo_id TEXT, cant TEXT, cant_num REAL,
+      ud TEXT, uso TEXT, reserva INTEGER, fuente TEXT
+    );
+    CREATE TABLE manual_toc (manual_id INTEGER, orden INTEGER, titulo TEXT, pagina INTEGER, nivel INTEGER);
   ''');
   return db;
 }

@@ -7,7 +7,13 @@ import path from 'node:path';
 // necesitan saber qué actividad cae en qué lote, no solo qué lotes existen
 // por nivel). Una carpeta de datos v1 sigue siendo válida en todo lo demás,
 // pero re-extráela para que el desglose por lote deje de estar vacío.
-export const SCHEMA_VERSION = 2;
+// v3 (2026-09-23): añade `actividad.seguridad` (Fase B / U11 — R6 exige
+// mostrar las medidas de seguridad de la sección 1 del VMI, aparte y
+// colapsadas; vmi-parser.js reconocía esa sección como límite de la 2, pero
+// descartaba su texto). Como en v2, una carpeta anterior no queda inválida
+// como dato -- solo hay que re-extraer para que esa columna deje de estar
+// vacía; la app SÍ exige que `schema_version` case exacto (AE6/R25).
+export const SCHEMA_VERSION = 3;
 
 /**
  * @param {string} outDir

@@ -15,7 +15,9 @@ import 'package:path/path.dart' as p;
 /// Versión de esquema que este binario sabe leer (KTD3 / R25).
 /// Debe coincidir con `SCHEMA_VERSION` en `pipeline/src/build/manifest.js`.
 /// v2 (2026-09-23) añadió la tabla `actividad_lote` (R11/R12/AE3).
-const int kExpectedSchemaVersion = 2;
+/// v3 (2026-09-23) añadió `actividad.seguridad`, el texto de la sección 1
+/// del VMI (R6/U11).
+const int kExpectedSchemaVersion = 3;
 
 /// Resultado de intentar cargar la carpeta de datos. Sellada a propósito:
 /// el llamador (main.dart) debe manejar los cuatro casos explícitamente.

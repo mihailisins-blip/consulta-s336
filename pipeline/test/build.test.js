@@ -79,6 +79,13 @@ test('writeDatabase: data.sqlite abre y la búsqueda FTS devuelve la actividad',
       .get('FD5.01.01', 'IM1A'),
     'FD5.01.01 debería estar en el lote IM1A',
   );
+
+  // seguridad (v3): el texto de la sección 1 del VMI llega hasta la
+  // columna, no solo hasta el objeto parseado (R6/U11).
+  assert.match(
+    db.prepare('SELECT seguridad FROM actividad WHERE codigo = ?').get('FD5.02.04').seguridad,
+    /Riesgos generales asociados/,
+  );
   db.close();
 });
 

@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:sqlite3/sqlite3.dart' hide Row;
 
 import '../data/queries.dart';
+import '../detalle/actividad_detalle.dart';
 import 'recientes.dart';
 
 const _programas = [
@@ -19,8 +20,18 @@ const _programas = [
 
 class PorCicloScreen extends StatefulWidget {
   final Database db;
+  final String dataDir;
   final RecientesController recientes;
-  const PorCicloScreen({super.key, required this.db, required this.recientes});
+  /// Deep-link opcional (p. ej. desde el detalle de una actividad, "ir al
+  /// ciclo X") -- arranca ya en el programa y nivel de este código.
+  final String? nivelInicial;
+  const PorCicloScreen({
+    super.key,
+    required this.db,
+    required this.dataDir,
+    required this.recientes,
+    this.nivelInicial,
+  });
 
   @override
   State<PorCicloScreen> createState() => _PorCicloScreenState();
@@ -30,6 +41,19 @@ class _PorCicloScreenState extends State<PorCicloScreen> {
   String _programa = 'km';
   String? _nivelCodigo;
   bool _verPorLote = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final inicial = widget.nivelInicial;
+    if (inicial != null) {
+      final programa = programaDeNivel(widget.db, inicial);
+      if (programa != null) {
+        _programa = programa;
+        _nivelCodigo = inicial;
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -80,6 +104,7 @@ class _PorCicloScreenState extends State<PorCicloScreen> {
                 ? const Center(child: Text('Elige un nivel.'))
                 : _NivelContent(
                     db: widget.db,
+                    dataDir: widget.dataDir,
                     recientes: widget.recientes,
                     nivelCodigo: nivelActivo,
                     verPorLote: _verPorLote,
@@ -94,6 +119,7 @@ class _PorCicloScreenState extends State<PorCicloScreen> {
 
 class _NivelContent extends StatelessWidget {
   final Database db;
+  final String dataDir;
   final RecientesController recientes;
   final String nivelCodigo;
   final bool verPorLote;
@@ -101,6 +127,7 @@ class _NivelContent extends StatelessWidget {
 
   const _NivelContent({
     required this.db,
+    required this.dataDir,
     required this.recientes,
     required this.nivelCodigo,
     required this.verPorLote,
@@ -139,8 +166,18 @@ class _NivelContent extends StatelessWidget {
         ),
         Expanded(
           child: verPorLote && resultado.lotes.isNotEmpty
-              ? _PorLoteView(db: db, lotes: resultado.lotes)
-              : _AgrupadoPorSistemaView(db: db, codigos: resultado.codigos),
+              ? _PorLoteView(
+                  db: db,
+                  dataDir: dataDir,
+                  recientes: recientes,
+                  lotes: resultado.lotes,
+                )
+              : _AgrupadoPorSistemaView(
+                  db: db,
+                  dataDir: dataDir,
+                  recientes: recientes,
+                  codigos: resultado.codigos,
+                ),
         ),
       ],
     );
@@ -149,8 +186,15 @@ class _NivelContent extends StatelessWidget {
 
 class _AgrupadoPorSistemaView extends StatelessWidget {
   final Database db;
+  final String dataDir;
+  final RecientesController recientes;
   final List<String> codigos;
-  const _AgrupadoPorSistemaView({required this.db, required this.codigos});
+  const _AgrupadoPorSistemaView({
+    required this.db,
+    required this.dataDir,
+    required this.recientes,
+    required this.codigos,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -175,7 +219,12 @@ class _AgrupadoPorSistemaView extends StatelessWidget {
               spacing: 8,
               children: [
                 Chip(label: Text(sis)),
-                ...porSistema[sis]!.map((c) => Text(c)),
+                ...porSistema[sis]!.map(
+                  (c) => ActionChip(
+                    label: Text(c),
+                    onPressed: () => _abrirActividad(context, db, dataDir, recientes, c),
+                  ),
+                ),
               ],
             ),
           ),
@@ -186,8 +235,15 @@ class _AgrupadoPorSistemaView extends StatelessWidget {
 
 class _PorLoteView extends StatelessWidget {
   final Database db;
+  final String dataDir;
+  final RecientesController recientes;
   final List<String> lotes;
-  const _PorLoteView({required this.db, required this.lotes});
+  const _PorLoteView({
+    required this.db,
+    required this.dataDir,
+    required this.recientes,
+    required this.lotes,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -208,7 +264,16 @@ class _PorLoteView extends StatelessWidget {
                     if (acts.isEmpty) {
                       return const Text('(sin actividades vinculadas a este lote todavía)');
                     }
-                    return Wrap(spacing: 8, children: [for (final c in acts) Text(c)]);
+                    return Wrap(
+                      spacing: 8,
+                      children: [
+                        for (final c in acts)
+                          ActionChip(
+                            label: Text(c),
+                            onPressed: () => _abrirActividad(context, db, dataDir, recientes, c),
+                          ),
+                      ],
+                    );
                   },
                 ),
               ],
@@ -217,4 +282,23 @@ class _PorLoteView extends StatelessWidget {
       ],
     );
   }
+}
+
+void _abrirActividad(
+  BuildContext context,
+  Database db,
+  String dataDir,
+  RecientesController recientes,
+  String codigo,
+) {
+  Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => ActividadDetalleScreen(
+        db: db,
+        dataDir: dataDir,
+        codigo: codigo,
+        recientes: recientes,
+      ),
+    ),
+  );
 }

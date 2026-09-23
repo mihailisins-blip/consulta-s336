@@ -51,6 +51,7 @@ CREATE TABLE actividad (
   marca_seguridad INTEGER DEFAULT 0,
   observaciones_plan TEXT,
   zonas_trabajo TEXT,
+  seguridad TEXT,          -- texto de la sección 1 del VMI (R6, colapsable en la UI) -- v3
   duracion TEXT,          -- R7: la rellena el curador (vía overrides); reservado para el simulador
   zona TEXT,              -- R7: idem; la zona operativa "de simulación", distinta de zonas_trabajo del VMI
   fuente_vmi INTEGER, fuente_plan INTEGER, fuente_materiales INTEGER
@@ -168,8 +169,8 @@ function writeAll(db, { plan, materiales, model, catalog, join, vmiByCode, meta 
   const insAct = db.prepare(`INSERT INTO actividad
     (codigo,sistema_codigo,vmi_rel_path,ciclo_carpeta,sin_extraer,motivo,componente,actividad_tipo,
      operacion,frecuencia,edicion,fecha,descripcion_plan,marca_seguridad,observaciones_plan,zonas_trabajo,
-     fuente_vmi,fuente_plan,fuente_materiales)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+     seguridad,fuente_vmi,fuente_plan,fuente_materiales)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
   const insPaso = db.prepare('INSERT INTO actividad_paso VALUES (?,?,?,?,?)');
   const insActNivel = db.prepare('INSERT INTO actividad_nivel VALUES (?,?)');
   for (const a of join.actividades) {
@@ -180,6 +181,7 @@ function writeAll(db, { plan, materiales, model, catalog, join, vmiByCode, meta 
       a.sinExtraer ? 1 : 0, rec.motivo ?? null,
       a.componente, a.actividadTipo, a.operacion, rec.frecuencia ?? null, a.edicion, rec.fecha ?? null,
       a.descripcionPlan, a.marcaSeguridad ? 1 : 0, a.observacionesPlan, rec.zonasTrabajo ?? null,
+      rec.seguridad ?? null,
       a.fuentes.vmi ? 1 : 0, a.fuentes.plan ? 1 : 0, a.fuentes.materiales ? 1 : 0,
     );
     for (const nivel of a.ciclos ?? []) insActNivel.run(a.codigo, nivel);

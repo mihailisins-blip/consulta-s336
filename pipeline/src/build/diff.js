@@ -23,7 +23,7 @@ const COMPARABLES = {
   actividad: {
     key: ['codigo'],
     campos: ['operacion', 'frecuencia', 'edicion', 'componente', 'actividad_tipo',
-      'descripcion_plan', 'observaciones_plan', 'zonas_trabajo', 'marca_seguridad', 'sin_extraer'],
+      'descripcion_plan', 'observaciones_plan', 'zonas_trabajo', 'seguridad', 'marca_seguridad', 'sin_extraer'],
   },
   sistema: { key: ['codigo'], campos: ['nombre'] },
   catalogo: { key: ['id'], campos: ['descripcion', 'unidad', 'fabricante', 'referencia'] },

@@ -7,7 +7,7 @@
 // por sí solo si la acumulación del código funciona o es redundante).
 //
 // Al final, un par de asserts de cordura contra el fixture real pequeño
-// (test/fixtures/data-lotes.sqlite, esquema v2) confirman que la consulta
+// (test/fixtures/data-lotes.sqlite, esquema v3) confirman que la consulta
 // también funciona contra una base escrita de verdad por pipeline/.
 
 import 'package:flutter_test/flutter_test.dart';
@@ -116,8 +116,8 @@ void main() {
     test('resuelve el sistema de cada actividad y omite las sin sistema', () {
       final db = openMinimalTestDb();
       addTearDown(db.dispose);
-      db.execute("INSERT INTO actividad VALUES ('FD5.01.01','FD5')");
-      db.execute("INSERT INTO actividad VALUES ('ZZ9.01.01',NULL)");
+      db.execute("INSERT INTO actividad (codigo,sistema_codigo) VALUES ('FD5.01.01','FD5')");
+      db.execute("INSERT INTO actividad (codigo,sistema_codigo) VALUES ('ZZ9.01.01',NULL)");
       final r = sistemasDe(db, ['FD5.01.01', 'ZZ9.01.01']);
       expect(r, {'FD5.01.01': 'FD5'});
     });
@@ -129,7 +129,7 @@ void main() {
     });
   });
 
-  group('cordura contra el fixture real (esquema v2)', () {
+  group('cordura contra el fixture real (esquema v3)', () {
     late Database db;
     setUpAll(() => db = openRealSmallFixtureDb());
     tearDownAll(() => db.dispose());
