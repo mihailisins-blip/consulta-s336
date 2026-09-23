@@ -5,29 +5,20 @@
 
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
-// Database, no la clase Row de sqlite3 -- Row también es el widget de layout
-// de Flutter, y ambas librerías la exportan.
-import 'package:sqlite3/sqlite3.dart' hide Row;
 
+import '../app_session.dart';
 import '../data/queries.dart';
 import '../detalle/actividad_detalle.dart';
 import '../detalle/pdf_viewer.dart';
 import 'recientes.dart';
 
 class PorSistemaScreen extends StatelessWidget {
-  final Database db;
-  final String dataDir;
-  final RecientesController recientes;
-  const PorSistemaScreen({
-    super.key,
-    required this.db,
-    required this.dataDir,
-    required this.recientes,
-  });
+  final AppSession session;
+  const PorSistemaScreen({super.key, required this.session});
 
   @override
   Widget build(BuildContext context) {
-    final sistemas = listSistemas(db);
+    final sistemas = listSistemas(session.db);
     return Scaffold(
       appBar: AppBar(title: const Text('Por sistema')),
       body: ListView.separated(
@@ -40,7 +31,7 @@ class PorSistemaScreen extends StatelessWidget {
             subtitle: Text('${s.numActividades} actividades'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
-              recientes.registrar(
+              session.recientes.registrar(
                 RecienteEntry(
                   tipo: 'sistema',
                   id: s.codigo,
@@ -49,12 +40,7 @@ class PorSistemaScreen extends StatelessWidget {
               );
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => SistemaDetalleScreen(
-                    db: db,
-                    dataDir: dataDir,
-                    codigo: s.codigo,
-                    recientes: recientes,
-                  ),
+                  builder: (_) => SistemaDetalleScreen(session: session, codigo: s.codigo),
                 ),
               );
             },
@@ -66,21 +52,13 @@ class PorSistemaScreen extends StatelessWidget {
 }
 
 class SistemaDetalleScreen extends StatelessWidget {
-  final Database db;
-  final String dataDir;
+  final AppSession session;
   final String codigo;
-  final RecientesController recientes;
-  const SistemaDetalleScreen({
-    super.key,
-    required this.db,
-    required this.dataDir,
-    required this.codigo,
-    required this.recientes,
-  });
+  const SistemaDetalleScreen({super.key, required this.session, required this.codigo});
 
   @override
   Widget build(BuildContext context) {
-    final detalle = getSistemaDetalle(db, codigo);
+    final detalle = getSistemaDetalle(session.db, codigo);
     if (detalle == null) {
       return Scaffold(
         appBar: AppBar(title: Text(codigo)),
@@ -127,7 +105,7 @@ class SistemaDetalleScreen extends StatelessWidget {
               // directamente a su página; vacío si el PDF no traía
               // outline/marcadores utilizables (degradación anotada en el
               // plan, no un error).
-              for (final t in listManualToc(db, m.id))
+              for (final t in listManualToc(session.db, m.id))
                 Padding(
                   padding: const EdgeInsets.only(left: 32),
                   child: ListTile(
@@ -169,7 +147,7 @@ class SistemaDetalleScreen extends StatelessWidget {
   }
 
   void _abrirManual(BuildContext context, Manual manual, {int? pagina}) {
-    final path = p.join(dataDir, 'pdfs', 'manuales', manual.relPath);
+    final path = p.join(session.dataDir, 'pdfs', 'manuales', manual.relPath);
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => PdfViewerScreen(
@@ -184,12 +162,7 @@ class SistemaDetalleScreen extends StatelessWidget {
   void _abrirActividad(BuildContext context, String codigoActividad) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ActividadDetalleScreen(
-          db: db,
-          dataDir: dataDir,
-          codigo: codigoActividad,
-          recientes: recientes,
-        ),
+        builder: (_) => ActividadDetalleScreen(session: session, codigo: codigoActividad),
       ),
     );
   }

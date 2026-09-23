@@ -5,10 +5,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
-// Database, no la clase Row de sqlite3 -- Row también es el widget de layout
-// de Flutter, y ambas librerías la exportan.
-import 'package:sqlite3/sqlite3.dart' hide Row;
 
+import '../app_session.dart';
 import '../data/queries.dart';
 import '../export/export_xlsx.dart';
 import '../hub/por_ciclo_screen.dart';
@@ -17,22 +15,14 @@ import '../hub/recientes.dart';
 import 'pdf_viewer.dart';
 
 class ActividadDetalleScreen extends StatelessWidget {
-  final Database db;
-  final String dataDir;
+  final AppSession session;
   final String codigo;
-  final RecientesController recientes;
 
-  const ActividadDetalleScreen({
-    super.key,
-    required this.db,
-    required this.dataDir,
-    required this.codigo,
-    required this.recientes,
-  });
+  const ActividadDetalleScreen({super.key, required this.session, required this.codigo});
 
   @override
   Widget build(BuildContext context) {
-    final detalle = getActividadDetalle(db, codigo);
+    final detalle = getActividadDetalle(session.db, codigo);
     if (detalle == null) {
       return Scaffold(
         appBar: AppBar(title: Text(codigo)),
@@ -45,7 +35,7 @@ class ActividadDetalleScreen extends StatelessWidget {
     // ListenableBuilder sobre este mismo RecientesController, lo que
     // incumple el contrato de build() de Flutter en cada navegación.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      recientes.registrar(
+      session.recientes.registrar(
         RecienteEntry(tipo: 'actividad', id: detalle.codigo, titulo: detalle.codigo),
       );
     });
@@ -177,37 +167,27 @@ class ActividadDetalleScreen extends StatelessWidget {
   }
 
   void _abrirSistema(BuildContext context, String sistemaCodigo) {
-    recientes.registrar(
+    session.recientes.registrar(
       RecienteEntry(tipo: 'sistema', id: sistemaCodigo, titulo: sistemaCodigo),
     );
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => SistemaDetalleScreen(
-          db: db,
-          dataDir: dataDir,
-          codigo: sistemaCodigo,
-          recientes: recientes,
-        ),
+        builder: (_) => SistemaDetalleScreen(session: session, codigo: sistemaCodigo),
       ),
     );
   }
 
   void _abrirCiclo(BuildContext context, String nivelCodigo) {
-    recientes.registrar(RecienteEntry(tipo: 'ciclo', id: nivelCodigo, titulo: nivelCodigo));
+    session.recientes.registrar(RecienteEntry(tipo: 'ciclo', id: nivelCodigo, titulo: nivelCodigo));
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => PorCicloScreen(
-          db: db,
-          recientes: recientes,
-          dataDir: dataDir,
-          nivelInicial: nivelCodigo,
-        ),
+        builder: (_) => PorCicloScreen(session: session, nivelInicial: nivelCodigo),
       ),
     );
   }
 
   void _abrirVmi(BuildContext context, ActividadDetalle detalle) {
-    final path = p.join(dataDir, 'pdfs', 'vmi', detalle.vmiRelPath!);
+    final path = p.join(session.dataDir, 'pdfs', 'vmi', detalle.vmiRelPath!);
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => PdfViewerScreen(path: path, title: detalle.codigo),
@@ -216,7 +196,7 @@ class ActividadDetalleScreen extends StatelessWidget {
   }
 
   Future<void> _exportar(BuildContext context, ActividadDetalle detalle) async {
-    final materiales = materialesDeActividadParaExport(db, detalle.codigo);
+    final materiales = materialesDeActividadParaExport(session.db, detalle.codigo);
     final bytes = xlsxBytesDeActividad(detalle.codigo, materiales);
     await exportarYGuardar(
       context,

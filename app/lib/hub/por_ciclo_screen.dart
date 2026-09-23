@@ -4,10 +4,8 @@
 // sistema, con un desglose por lote cuando el nivel está partido.
 
 import 'package:flutter/material.dart';
-// Database, no la clase Row de sqlite3 -- Row también es el widget de layout
-// de Flutter, y ambas librerías la exportan.
-import 'package:sqlite3/sqlite3.dart' hide Row;
 
+import '../app_session.dart';
 import '../data/queries.dart';
 import '../detalle/actividad_detalle.dart';
 import '../export/export_xlsx.dart';
@@ -20,19 +18,11 @@ const _programas = [
 ];
 
 class PorCicloScreen extends StatefulWidget {
-  final Database db;
-  final String dataDir;
-  final RecientesController recientes;
+  final AppSession session;
   /// Deep-link opcional (p. ej. desde el detalle de una actividad, "ir al
   /// ciclo X") -- arranca ya en el programa y nivel de este código.
   final String? nivelInicial;
-  const PorCicloScreen({
-    super.key,
-    required this.db,
-    required this.dataDir,
-    required this.recientes,
-    this.nivelInicial,
-  });
+  const PorCicloScreen({super.key, required this.session, this.nivelInicial});
 
   @override
   State<PorCicloScreen> createState() => _PorCicloScreenState();
@@ -48,7 +38,7 @@ class _PorCicloScreenState extends State<PorCicloScreen> {
     super.initState();
     final inicial = widget.nivelInicial;
     if (inicial != null) {
-      final programa = programaDeNivel(widget.db, inicial);
+      final programa = programaDeNivel(widget.session.db, inicial);
       if (programa != null) {
         _programa = programa;
         _nivelCodigo = inicial;
@@ -58,7 +48,7 @@ class _PorCicloScreenState extends State<PorCicloScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final niveles = listNiveles(widget.db, _programa);
+    final niveles = listNiveles(widget.session.db, _programa);
     // 'ns' solo tiene el nivel NS en sí -- se selecciona solo.
     final nivelActivo = _nivelCodigo ?? (niveles.length == 1 ? niveles.first.codigo : null);
 
@@ -104,9 +94,7 @@ class _PorCicloScreenState extends State<PorCicloScreen> {
             child: nivelActivo == null
                 ? const Center(child: Text('Elige un nivel.'))
                 : _NivelContent(
-                    db: widget.db,
-                    dataDir: widget.dataDir,
-                    recientes: widget.recientes,
+                    session: widget.session,
                     nivelCodigo: nivelActivo,
                     verPorLote: _verPorLote,
                     onVerPorLoteChanged: (v) => setState(() => _verPorLote = v),
@@ -119,17 +107,13 @@ class _PorCicloScreenState extends State<PorCicloScreen> {
 }
 
 class _NivelContent extends StatelessWidget {
-  final Database db;
-  final String dataDir;
-  final RecientesController recientes;
+  final AppSession session;
   final String nivelCodigo;
   final bool verPorLote;
   final ValueChanged<bool> onVerPorLoteChanged;
 
   const _NivelContent({
-    required this.db,
-    required this.dataDir,
-    required this.recientes,
+    required this.session,
     required this.nivelCodigo,
     required this.verPorLote,
     required this.onVerPorLoteChanged,
@@ -137,13 +121,13 @@ class _NivelContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final resultado = actividadesDeNivel(db, nivelCodigo);
+    final resultado = actividadesDeNivel(session.db, nivelCodigo);
     // Diferido a después del build (no durante) -- ver el mismo comentario
     // en actividad_detalle.dart: llamarlo aquí dispararía notifyListeners()
     // mientras HubScreen, montado debajo en la pila del Navigator, está en
     // medio de su propio build().
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      recientes.registrar(
+      session.recientes.registrar(
         RecienteEntry(tipo: 'ciclo', id: nivelCodigo, titulo: nivelCodigo),
       );
     });
@@ -165,7 +149,7 @@ class _NivelContent extends StatelessWidget {
                 icon: const Icon(Icons.file_download_outlined),
                 tooltip: 'Exportar materiales a Excel',
                 onPressed: () async {
-                  final materiales = materialesDeNivelParaExport(db, nivelCodigo);
+                  final materiales = materialesDeNivelParaExport(session.db, nivelCodigo);
                   final bytes = xlsxBytesDeNivel(nivelCodigo, materiales);
                   await exportarYGuardar(
                     context,
@@ -187,18 +171,8 @@ class _NivelContent extends StatelessWidget {
         ),
         Expanded(
           child: verPorLote && resultado.lotes.isNotEmpty
-              ? _PorLoteView(
-                  db: db,
-                  dataDir: dataDir,
-                  recientes: recientes,
-                  lotes: resultado.lotes,
-                )
-              : _AgrupadoPorSistemaView(
-                  db: db,
-                  dataDir: dataDir,
-                  recientes: recientes,
-                  codigos: resultado.codigos,
-                ),
+              ? _PorLoteView(session: session, lotes: resultado.lotes)
+              : _AgrupadoPorSistemaView(session: session, codigos: resultado.codigos),
         ),
       ],
     );
@@ -206,23 +180,16 @@ class _NivelContent extends StatelessWidget {
 }
 
 class _AgrupadoPorSistemaView extends StatelessWidget {
-  final Database db;
-  final String dataDir;
-  final RecientesController recientes;
+  final AppSession session;
   final List<String> codigos;
-  const _AgrupadoPorSistemaView({
-    required this.db,
-    required this.dataDir,
-    required this.recientes,
-    required this.codigos,
-  });
+  const _AgrupadoPorSistemaView({required this.session, required this.codigos});
 
   @override
   Widget build(BuildContext context) {
     if (codigos.isEmpty) {
       return const Center(child: Text('Ninguna actividad en este nivel.'));
     }
-    final sistemaDe = sistemasDe(db, codigos);
+    final sistemaDe = sistemasDe(session.db, codigos);
     final porSistema = <String, List<String>>{};
     for (final c in codigos) {
       porSistema.putIfAbsent(sistemaDe[c] ?? '(sin sistema)', () => []).add(c);
@@ -243,7 +210,7 @@ class _AgrupadoPorSistemaView extends StatelessWidget {
                 ...porSistema[sis]!.map(
                   (c) => ActionChip(
                     label: Text(c),
-                    onPressed: () => _abrirActividad(context, db, dataDir, recientes, c),
+                    onPressed: () => _abrirActividad(context, session, c),
                   ),
                 ),
               ],
@@ -255,16 +222,9 @@ class _AgrupadoPorSistemaView extends StatelessWidget {
 }
 
 class _PorLoteView extends StatelessWidget {
-  final Database db;
-  final String dataDir;
-  final RecientesController recientes;
+  final AppSession session;
   final List<String> lotes;
-  const _PorLoteView({
-    required this.db,
-    required this.dataDir,
-    required this.recientes,
-    required this.lotes,
-  });
+  const _PorLoteView({required this.session, required this.lotes});
 
   @override
   Widget build(BuildContext context) {
@@ -281,7 +241,7 @@ class _PorLoteView extends StatelessWidget {
                 const SizedBox(height: 4),
                 Builder(
                   builder: (context) {
-                    final acts = actividadesDeLote(db, lote);
+                    final acts = actividadesDeLote(session.db, lote);
                     if (acts.isEmpty) {
                       return const Text('(sin actividades vinculadas a este lote todavía)');
                     }
@@ -291,7 +251,7 @@ class _PorLoteView extends StatelessWidget {
                         for (final c in acts)
                           ActionChip(
                             label: Text(c),
-                            onPressed: () => _abrirActividad(context, db, dataDir, recientes, c),
+                            onPressed: () => _abrirActividad(context, session, c),
                           ),
                       ],
                     );
@@ -305,21 +265,10 @@ class _PorLoteView extends StatelessWidget {
   }
 }
 
-void _abrirActividad(
-  BuildContext context,
-  Database db,
-  String dataDir,
-  RecientesController recientes,
-  String codigo,
-) {
+void _abrirActividad(BuildContext context, AppSession session, String codigo) {
   Navigator.of(context).push(
     MaterialPageRoute(
-      builder: (_) => ActividadDetalleScreen(
-        db: db,
-        dataDir: dataDir,
-        codigo: codigo,
-        recientes: recientes,
-      ),
+      builder: (_) => ActividadDetalleScreen(session: session, codigo: codigo),
     ),
   );
 }

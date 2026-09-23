@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:sqlite3/sqlite3.dart';
 
+import '../app_session.dart';
 import '../detalle/actividad_detalle.dart';
 import '../search/search_service.dart';
 import 'catalogo_screen.dart';
@@ -23,6 +24,7 @@ class HubScreen extends StatefulWidget {
 class _HubScreenState extends State<HubScreen> {
   late final SearchService _search;
   final _recientes = RecientesController();
+  late final AppSession _session;
   final _searchController = TextEditingController();
   List<SearchResult> _results = const [];
 
@@ -30,6 +32,7 @@ class _HubScreenState extends State<HubScreen> {
   void initState() {
     super.initState();
     _search = SearchService(widget.db);
+    _session = AppSession(db: widget.db, dataDir: widget.dataDir, recientes: _recientes);
   }
 
   @override
@@ -49,34 +52,20 @@ class _HubScreenState extends State<HubScreen> {
         _recientes.registrar(RecienteEntry(tipo: 'sistema', id: r.id, titulo: r.titulo));
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => SistemaDetalleScreen(
-              db: widget.db,
-              dataDir: widget.dataDir,
-              codigo: r.id,
-              recientes: _recientes,
-            ),
+            builder: (_) => SistemaDetalleScreen(session: _session, codigo: r.id),
           ),
         );
       case SearchResultType.catalogo:
         _recientes.registrar(RecienteEntry(tipo: 'catalogo', id: r.id, titulo: r.titulo));
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => CatalogoScreen(
-              db: widget.db,
-              dataDir: widget.dataDir,
-              recientes: _recientes,
-            ),
+            builder: (_) => CatalogoScreen(session: _session),
           ),
         );
       case SearchResultType.actividad:
         Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => ActividadDetalleScreen(
-              db: widget.db,
-              dataDir: widget.dataDir,
-              codigo: r.id,
-              recientes: _recientes,
-            ),
+            builder: (_) => ActividadDetalleScreen(session: _session, codigo: r.id),
           ),
         );
     }
@@ -134,11 +123,7 @@ class _HubScreenState extends State<HubScreen> {
                   label: 'Por sistema',
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => PorSistemaScreen(
-                        db: widget.db,
-                        dataDir: widget.dataDir,
-                        recientes: _recientes,
-                      ),
+                      builder: (_) => PorSistemaScreen(session: _session),
                     ),
                   ),
                 ),
@@ -147,11 +132,7 @@ class _HubScreenState extends State<HubScreen> {
                   label: 'Por ciclo',
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => PorCicloScreen(
-                        db: widget.db,
-                        dataDir: widget.dataDir,
-                        recientes: _recientes,
-                      ),
+                      builder: (_) => PorCicloScreen(session: _session),
                     ),
                   ),
                 ),
@@ -160,11 +141,7 @@ class _HubScreenState extends State<HubScreen> {
                   label: 'Catálogo',
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => CatalogoScreen(
-                        db: widget.db,
-                        dataDir: widget.dataDir,
-                        recientes: _recientes,
-                      ),
+                      builder: (_) => CatalogoScreen(session: _session),
                     ),
                   ),
                 ),

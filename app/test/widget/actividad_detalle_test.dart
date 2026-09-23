@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/sqlite3.dart';
 
+import 'package:consulta_s336_app/app_session.dart';
 import 'package:consulta_s336_app/detalle/actividad_detalle.dart';
 import 'package:consulta_s336_app/hub/recientes.dart';
 
@@ -44,10 +45,8 @@ void main() {
       await tester.pumpWidget(
         wrap(
           ActividadDetalleScreen(
-            db: db,
-            dataDir: r'C:\no-existe',
+            session: AppSession(db: db, dataDir: r'C:\no-existe', recientes: RecientesController()),
             codigo: 'FD5.02.04',
-            recientes: RecientesController(),
           ),
         ),
       );
@@ -70,10 +69,8 @@ void main() {
       await tester.pumpWidget(
         wrap(
           ActividadDetalleScreen(
-            db: db,
-            dataDir: r'C:\no-existe',
+            session: AppSession(db: db, dataDir: r'C:\no-existe', recientes: RecientesController()),
             codigo: 'FD5.02.04',
-            recientes: RecientesController(),
           ),
         ),
       );
@@ -93,10 +90,8 @@ void main() {
     await tester.pumpWidget(
       wrap(
         ActividadDetalleScreen(
-          db: db,
-          dataDir: r'C:\no-existe',
+          session: AppSession(db: db, dataDir: r'C:\no-existe', recientes: RecientesController()),
           codigo: 'NOPE.00.00',
-          recientes: RecientesController(),
         ),
       ),
     );
@@ -121,10 +116,12 @@ void main() {
       await tester.pumpWidget(
         wrap(
           ActividadDetalleScreen(
-            db: minimalDb,
-            dataDir: r'C:\no-existe',
+            session: AppSession(
+              db: minimalDb,
+              dataDir: r'C:\no-existe',
+              recientes: RecientesController(),
+            ),
             codigo: 'FD5.99.99',
-            recientes: RecientesController(),
           ),
         ),
       );

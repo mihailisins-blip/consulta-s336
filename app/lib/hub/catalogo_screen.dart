@@ -3,26 +3,19 @@
 // qué actividades usan esta herramienta o consumible, en cualquier ciclo.
 
 import 'package:flutter/material.dart';
-import 'package:sqlite3/sqlite3.dart';
 
+import '../app_session.dart';
 import '../data/queries.dart';
 import '../detalle/actividad_detalle.dart';
 import 'recientes.dart';
 
 class CatalogoScreen extends StatelessWidget {
-  final Database db;
-  final String dataDir;
-  final RecientesController recientes;
-  const CatalogoScreen({
-    super.key,
-    required this.db,
-    required this.dataDir,
-    required this.recientes,
-  });
+  final AppSession session;
+  const CatalogoScreen({super.key, required this.session});
 
   @override
   Widget build(BuildContext context) {
-    final entradas = listCatalogo(db);
+    final entradas = listCatalogo(session.db);
     return Scaffold(
       appBar: AppBar(title: const Text('Catálogo')),
       body: ListView.separated(
@@ -40,17 +33,12 @@ class CatalogoScreen extends StatelessWidget {
                 ? Chip(label: Text(e.codigoErp!))
                 : const Text('sin código ERP', style: TextStyle(fontStyle: FontStyle.italic)),
             onTap: () {
-              recientes.registrar(
+              session.recientes.registrar(
                 RecienteEntry(tipo: 'catalogo', id: e.id, titulo: e.descripcion ?? e.id),
               );
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => CatalogoEntradaDetalleScreen(
-                    db: db,
-                    dataDir: dataDir,
-                    entrada: e,
-                    recientes: recientes,
-                  ),
+                  builder: (_) => CatalogoEntradaDetalleScreen(session: session, entrada: e),
                 ),
               );
             },
@@ -64,21 +52,13 @@ class CatalogoScreen extends StatelessWidget {
 /// Filtro bidireccional actividad<->material (R17): desde una entrada del
 /// catálogo, todas las actividades que la usan, en cualquier ciclo (AE7).
 class CatalogoEntradaDetalleScreen extends StatelessWidget {
-  final Database db;
-  final String dataDir;
+  final AppSession session;
   final CatalogoEntrada entrada;
-  final RecientesController recientes;
-  const CatalogoEntradaDetalleScreen({
-    super.key,
-    required this.db,
-    required this.dataDir,
-    required this.entrada,
-    required this.recientes,
-  });
+  const CatalogoEntradaDetalleScreen({super.key, required this.session, required this.entrada});
 
   @override
   Widget build(BuildContext context) {
-    final usos = actividadesQueUsan(db, entrada.id);
+    final usos = actividadesQueUsan(session.db, entrada.id);
     return Scaffold(
       appBar: AppBar(title: Text(entrada.descripcion ?? entrada.id)),
       body: ListView(
@@ -115,12 +95,7 @@ class CatalogoEntradaDetalleScreen extends StatelessWidget {
               ),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => ActividadDetalleScreen(
-                    db: db,
-                    dataDir: dataDir,
-                    codigo: u.actividadCodigo,
-                    recientes: recientes,
-                  ),
+                  builder: (_) => ActividadDetalleScreen(session: session, codigo: u.actividadCodigo),
                 ),
               ),
             ),
