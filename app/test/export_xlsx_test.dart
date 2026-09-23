@@ -57,6 +57,25 @@ void main() {
     );
   });
 
+  test(
+    'un byte de control ilegal en XML 1.0 se elimina, sin corromper el .xlsx',
+    () {
+      // 0x01 no es un carácter XML válido bajo ninguna forma -- ni escapado
+      // ni como referencia numérica -- así que debe desaparecer del texto,
+      // no quedar escapado. TAB (0x09) sí es válido y debe sobrevivir.
+      final bytes = buildXlsxBytes(
+        sheetName: 'Test',
+        headers: const ['Col'],
+        rows: const [
+          ['Grasa\x01 Klüberlub\tBE 41-1501'],
+        ],
+      );
+      final sheet = _readEntry(bytes, 'xl/worksheets/sheet1.xml');
+      expect(sheet, contains('<t>Grasa Klüberlub\tBE 41-1501</t>'));
+      expect(sheet, isNot(contains('\x01')));
+    },
+  );
+
   test('un PIEZA con cero a la izquierda se escribe como texto (celda inlineStr), no como número', () {
     final bytes = xlsxBytesDeNivel('RDH3', const [
       MaterialDeNivelExport(

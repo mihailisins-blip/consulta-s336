@@ -262,7 +262,18 @@ String _colLetter(int index) {
   return s;
 }
 
+/// XML 1.0 prohíbe estos bytes de control en cualquier posición del texto
+/// -- ni siquiera son legales como referencia de carácter numérica
+/// (`&#x01;` tampoco vale). TAB/LF/CR (0x09/0x0A/0x0D) sí son legales y no
+/// se tocan. Si el texto extraído de un PDF trae alguno de los ilegales
+/// (artefacto conocido de la extracción de texto de PDF), hay que
+/// quitarlo antes de escapar el resto -- si no, el .xlsx queda con XML
+/// inválido que Excel repara o rechaza, aunque escribir el archivo en sí
+/// no falle y la app reporte éxito igualmente.
+final _illegalXmlChars = RegExp('[\x00-\x08\x0B\x0C\x0E-\x1F]');
+
 String _escXml(String s) => s
+    .replaceAll(_illegalXmlChars, '')
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
