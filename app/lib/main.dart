@@ -73,10 +73,7 @@ class _DataFolderGateState extends State<_DataFolderGate> {
         }
         final result = snapshot.data!;
         return switch (result) {
-          DataFolderReady() => HubScreen(
-            db: _db ??= openDataDb(result.dbPath),
-            dataDir: result.dataDir,
-          ),
+          DataFolderReady() => _buildReady(result),
           DataFolderMissing() => _DataFolderProblemScreen(
             title: 'No se encuentra la carpeta de datos',
             message:
@@ -97,6 +94,34 @@ class _DataFolderGateState extends State<_DataFolderGate> {
         };
       },
     );
+  }
+
+  /// `loadDataFolder` solo valida `manifest.json` (forma + schema_version)
+  /// -- nunca intenta abrir `data.sqlite` en sí. Una carpeta con el schema
+  /// correcto pero un `data.sqlite` corrupto (p. ej. truncado a medias por
+  /// una copia interrumpida) pasaría ese chequeo igualmente. `sqlite3.open`
+  /// tampoco sirve de comprobación por sí sola: SQLite abre el archivo de
+  /// forma perezosa y no lee su contenido hasta la primera sentencia real
+  /// -- `open()` nunca lanza para un archivo corrupto, solo la primera
+  /// query (comprobado en la práctica: hasta un `SELECT 1` sin tabla
+  /// dispara `SqliteException(26)` "file is not a database"). Por eso se
+  /// fuerza aquí esa primera lectura, dentro del try/catch, en vez de
+  /// dejar que la carpeta dañada se descubra tarde y en cualquier sitio --
+  /// dentro del build() de HubScreen o de la primera pantalla que haga una
+  /// consulta real -- como una excepción sin capturar.
+  Widget _buildReady(DataFolderReady result) {
+    try {
+      final db = _db ??= openDataDb(result.dbPath);
+      db.select('SELECT 1');
+      return HubScreen(db: db, dataDir: result.dataDir);
+    } on SqliteException catch (e) {
+      _db?.dispose();
+      _db = null;
+      return _DataFolderProblemScreen(
+        title: 'Carpeta de datos dañada',
+        message: 'No se pudo abrir data.sqlite: $e',
+      );
+    }
   }
 }
 
