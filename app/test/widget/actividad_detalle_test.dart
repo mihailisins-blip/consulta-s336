@@ -1,9 +1,13 @@
 // ActividadDetalleScreen (U11 / R6): contra el fixture real pequeño
 // (data-lotes.sqlite, esquema v3) para FD5.02.04 -- consumibles con
 // cantidad/uso, procedimiento por fases, medidas de seguridad colapsadas
-// por defecto (KTD9). El caso AE1 (sin_extraer) se prueba en
-// queries_actividad_detalle_test.dart contra datos mínimos deterministas,
-// no aquí -- el fixture real no trae ninguna actividad sin_extraer.
+// por defecto (KTD9). El caso AE1 (sin_extraer) se prueba aquí también,
+// pero contra datos mínimos deterministas (helpers/minimal_db.dart) -- el
+// fixture real no trae ninguna actividad sin_extraer, así que no hay forma
+// de ejercitar ese estado contra contenido real. La lógica de consulta de
+// AE1 ya se prueba por separado en queries_actividad_detalle_test.dart;
+// esto prueba que la UI realmente la respeta (aviso visible, tablas
+// ausentes), no solo que la query devuelve los datos correctos.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,6 +16,7 @@ import 'package:sqlite3/sqlite3.dart';
 import 'package:consulta_s336_app/detalle/actividad_detalle.dart';
 import 'package:consulta_s336_app/hub/recientes.dart';
 
+import '../helpers/minimal_db.dart';
 import '../helpers/real_db.dart';
 
 void main() {
@@ -99,4 +104,49 @@ void main() {
 
     expect(find.text('Actividad no encontrada.'), findsOneWidget);
   });
+
+  testWidgets(
+    'AE1: sin_extraer muestra el aviso con el motivo y el enlace al PDF, sin tablas ni procedimiento',
+    (tester) async {
+      final minimalDb = openMinimalTestDb();
+      addTearDown(minimalDb.dispose);
+      minimalDb.execute('''
+        INSERT INTO actividad
+          (codigo,sistema_codigo,vmi_rel_path,sin_extraer,motivo,componente,actividad_tipo,operacion,frecuencia,edicion)
+        VALUES
+          ('FD5.99.99','FD5','x/VMI.3770.FD5.99.99.pdf',1,'sin la sección "2 Herramientas / Consumibles / Repuestos"',
+           'REDUCTOR','SUSTITUCIÓN','Operación de prueba','La indicada en el plan','0')
+      ''');
+
+      await tester.pumpWidget(
+        wrap(
+          ActividadDetalleScreen(
+            db: minimalDb,
+            dataDir: r'C:\no-existe',
+            codigo: 'FD5.99.99',
+            recientes: RecientesController(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('no se pudo extraer automáticamente'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('sin la sección "2 Herramientas'),
+        findsOneWidget,
+      );
+      expect(find.text('Abrir PDF original (VMI)'), findsOneWidget);
+
+      // AE1: solo el aviso y el enlace al PDF -- nada de tablas ni
+      // procedimiento, aunque la actividad tenga cabecera (código,
+      // sistema, componente...).
+      expect(find.text('Herramientas'), findsNothing);
+      expect(find.text('Consumibles y repuestos'), findsNothing);
+      expect(find.text('Procedimiento'), findsNothing);
+      expect(find.text('Exportar herramientas y materiales'), findsNothing);
+    },
+  );
 }
