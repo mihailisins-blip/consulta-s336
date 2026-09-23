@@ -40,13 +40,30 @@ class SearchService {
     final term = query.trim();
     if (term.isEmpty) return const [];
 
-    final rows = _db.select(
-      'SELECT tipo, ref, titulo FROM busqueda WHERE busqueda MATCH ? ORDER BY rank LIMIT ?',
-      [_toFtsQuery(term), limit],
-    );
-
+    final rows = _matchSafely(term, limit);
     return [for (final row in rows) _toResult(row)];
   }
+
+  /// `_toFtsQuery` deja pasar tal cual una query que ya "parece" usar
+  /// sintaxis FTS5 (operadores, comillas, paréntesis) -- pero un término de
+  /// búsqueda real puede tener un paréntesis o comilla sueltos sin ser
+  /// intencionadamente sintaxis FTS5 (p. ej. copiar una descripción de
+  /// catálogo como "ACEITE MD ULS 15W/40 (BIDON 208L)"), lo que FTS5
+  /// rechaza como error de sintaxis. Si el MATCH falla, se reintenta como
+  /// frase literal -- FTS5 siempre acepta una cadena entrecomillada, sea
+  /// cual sea su contenido -- en vez de dejar que la excepción se propague
+  /// hasta el TextField de búsqueda.
+  ResultSet _matchSafely(String term, int limit) {
+    const sql =
+        'SELECT tipo, ref, titulo FROM busqueda WHERE busqueda MATCH ? ORDER BY rank LIMIT ?';
+    try {
+      return _db.select(sql, [_toFtsQuery(term), limit]);
+    } on SqliteException {
+      return _db.select(sql, [_literalPhrase(term), limit]);
+    }
+  }
+
+  String _literalPhrase(String term) => '"${term.replaceAll('"', '""')}"';
 
   SearchResult _toResult(Row row) {
     final tipo = _tipoFrom(row['tipo'] as String);

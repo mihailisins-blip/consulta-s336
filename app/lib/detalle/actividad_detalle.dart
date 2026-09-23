@@ -39,9 +39,16 @@ class ActividadDetalleScreen extends StatelessWidget {
         body: const Center(child: Text('Actividad no encontrada.')),
       );
     }
-    recientes.registrar(
-      RecienteEntry(tipo: 'actividad', id: detalle.codigo, titulo: detalle.codigo),
-    );
+    // Diferido a después del build (no durante) -- llamarlo aquí mismo
+    // dispararía notifyListeners() mientras HubScreen (que sigue montado,
+    // debajo, en la pila del Navigator) está reconstruyendo su propio
+    // ListenableBuilder sobre este mismo RecientesController, lo que
+    // incumple el contrato de build() de Flutter en cada navegación.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      recientes.registrar(
+        RecienteEntry(tipo: 'actividad', id: detalle.codigo, titulo: detalle.codigo),
+      );
+    });
 
     final herramientas = detalle.materiales.where((m) => m.tipo == 'herramienta').toList();
     final consumibles = detalle.materiales.where((m) => m.tipo != 'herramienta').toList();

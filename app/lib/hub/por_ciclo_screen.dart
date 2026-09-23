@@ -138,9 +138,15 @@ class _NivelContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final resultado = actividadesDeNivel(db, nivelCodigo);
-    recientes.registrar(
-      RecienteEntry(tipo: 'ciclo', id: nivelCodigo, titulo: nivelCodigo),
-    );
+    // Diferido a después del build (no durante) -- ver el mismo comentario
+    // en actividad_detalle.dart: llamarlo aquí dispararía notifyListeners()
+    // mientras HubScreen, montado debajo en la pila del Navigator, está en
+    // medio de su propio build().
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      recientes.registrar(
+        RecienteEntry(tipo: 'ciclo', id: nivelCodigo, titulo: nivelCodigo),
+      );
+    });
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

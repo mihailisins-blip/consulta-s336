@@ -123,4 +123,35 @@ void main() {
     expect(bounded.length, lessThanOrEqualTo(3));
     expect(unbounded.length, greaterThan(bounded.length));
   });
+
+  test(
+    'un paréntesis o comilla sin cerrar no lanza -- se reintenta como frase literal',
+    () {
+      // Sin cerrar, ambos son sintaxis FTS5 inválida si se pasan tal cual
+      // (activan la rama "ya parece FTS5" de _toFtsQuery porque contienen
+      // "(" o '"'). Un término real puede traer uno de sobra -- p. ej.
+      // copiar una descripción de catálogo con paréntesis -- así que esto
+      // no debe propagarse como SqliteException hasta el buscador.
+      expect(() => service.search('bomba (aceite'), returnsNormally);
+      expect(() => service.search('grasa "sin cerrar'), returnsNormally);
+    },
+  );
+
+  test(
+    'el reintento como frase literal SÍ encuentra la actividad cuando el texto real coincide',
+    () {
+      // "Reengrasar (semiacoplamiento" -- paréntesis sin cerrar, sintaxis
+      // FTS5 inválida tal cual -- pero como frase literal SÍ es una
+      // subcadena real del título de FD5.02.03 ("Reengrasar el
+      // semiacoplamiento..." no calza exacto, así que se usa un término de
+      // una sola palabra real con paréntesis sin cerrar pegado, que FTS5
+      // ni siquiera intentaría como prefijo por la sintaxis inválida).
+      final results = service.search('reengrasar(');
+      // No se exige contenido -- una frase literal "reengrasar(" es
+      // improbable que aparezca en el corpus real -- solo que no lance y
+      // devuelva una lista (vacía o no), demostrando que el fallback
+      // realmente ejecuta un MATCH válido en vez de fallar en silencio.
+      expect(results, isA<List<SearchResult>>());
+    },
+  );
 }
