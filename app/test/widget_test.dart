@@ -1,30 +1,93 @@
-// This is a basic Flutter widget test.
+// Smoke tests de main.dart: la app real (ConsultaS336App), con el resultado
+// de cargar la carpeta de datos ya construido en vez de una ruta real.
 //
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+// Deliberadamente NO se usa E/S real de archivos aquí (a diferencia de
+// data_folder_test.dart, que sí la prueba): combinar dart:io real dentro de
+// un FutureBuilder con pumpAndSettle() no es fiable en un widget test -- se
+// queda colgado indefinidamente en vez de fallar rápido. Estos tests solo
+// prueban que la UI renderiza cada DataFolderResult correctamente.
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:consulta_s336_app/data/data_folder.dart';
 import 'package:consulta_s336_app/main.dart';
 
+const _manifestBase = (
+  buildDate: '2026-09-01T00:00:00.000Z',
+  sources: <String, dynamic>{},
+);
+
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets(
+    'con una carpeta de datos válida, la app llega a la pantalla de "cargada" (AE6, caso compatible)',
+    (tester) async {
+      final result = DataFolderReady(
+        dataDir: r'C:\ruta\a\data',
+        dbPath: r'C:\ruta\a\data\data.sqlite',
+        manifest: DataManifest(
+          schemaVersion: kExpectedSchemaVersion,
+          dataFolderVersion: 5,
+          buildDate: _manifestBase.buildDate,
+          sources: _manifestBase.sources,
+          counts: const {'actividades': 438},
+          avisos: const [],
+        ),
+      );
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+      await tester.pumpWidget(ConsultaS336App(resultOverride: result));
+      await tester.pumpAndSettle();
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+      expect(find.textContaining('v5 cargada'), findsOneWidget);
+      expect(find.textContaining('438'), findsOneWidget);
+    },
+  );
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
-  });
+  testWidgets(
+    'sin carpeta de datos, muestra el aviso con la ruta esperada',
+    (tester) async {
+      const result = DataFolderMissing(r'C:\ruta\que\no\existe\data');
+
+      await tester.pumpWidget(const ConsultaS336App(resultOverride: result));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('No se encuentra'), findsOneWidget);
+      expect(find.textContaining(r'C:\ruta\que\no\existe\data'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'con schema_version incompatible, muestra el aviso de incompatibilidad y no la de "cargada" (AE6)',
+    (tester) async {
+      final result = DataFolderVersionMismatch(
+        DataManifest(
+          schemaVersion: 99,
+          dataFolderVersion: 1,
+          buildDate: _manifestBase.buildDate,
+          sources: _manifestBase.sources,
+          counts: const {},
+          avisos: const [],
+        ),
+      );
+
+      await tester.pumpWidget(ConsultaS336App(resultOverride: result));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('incompatible'), findsOneWidget);
+      expect(find.textContaining('v99'), findsOneWidget);
+      expect(find.textContaining('cargada'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'con una carpeta de datos dañada, muestra el motivo',
+    (tester) async {
+      const result = DataFolderCorrupt('manifest.json no es JSON válido');
+
+      await tester.pumpWidget(const ConsultaS336App(resultOverride: result));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('dañada'), findsOneWidget);
+      expect(find.textContaining('manifest.json no es JSON válido'), findsOneWidget);
+    },
+  );
 }
