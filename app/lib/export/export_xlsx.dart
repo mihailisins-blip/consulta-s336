@@ -131,7 +131,15 @@ Future<void> exportarYGuardar(
     mimeType: _mimeTypeXlsx,
     name: nombreSugerido,
   );
-  await file.saveTo(location.path);
+  try {
+    await file.saveTo(location.path);
+  } catch (e) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('No se pudo exportar: $e')),
+    );
+    return;
+  }
   if (!context.mounted) return;
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(content: Text('Exportado a ${location.path}')),
