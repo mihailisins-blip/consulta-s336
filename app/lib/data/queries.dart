@@ -531,3 +531,120 @@ List<CatalogoEntrada> listCatalogo(Database db) {
       ),
   ];
 }
+
+/// Una fila de Export A (U13 / R27): un material de `tipo='material'` (los
+/// que vienen del Excel `06`, con PIEZA -- las herramientas/consumibles de
+/// VMI no llevan código ERP y no son "materiales" en el sentido de R27),
+/// agregado sobre el conjunto de actividades de un nivel de ciclo.
+class MaterialDeNivelExport {
+  final String pieza;
+  final String? descripcion;
+  final double? cantidadTotal;
+  final String? unidad;
+  final bool reserva;
+  final int numActividades;
+  const MaterialDeNivelExport({
+    required this.pieza,
+    required this.descripcion,
+    required this.cantidadTotal,
+    required this.unidad,
+    required this.reserva,
+    required this.numActividades,
+  });
+}
+
+/// Export A: materiales del conjunto ACUMULADO de actividades de
+/// [nivelCodigo] (misma acumulación que la vista "por ciclo", R9/R12),
+/// con la cantidad sumada y el nº de actividades distintas que lo usan.
+List<MaterialDeNivelExport> materialesDeNivelParaExport(
+  Database db,
+  String nivelCodigo,
+) {
+  final codigos = actividadesDeNivel(db, nivelCodigo).codigos;
+  if (codigos.isEmpty) return const [];
+  final placeholders = List.filled(codigos.length, '?').join(',');
+  final rows = db.select(
+    '''
+    SELECT c.codigo_erp, c.descripcion, c.unidad,
+           SUM(am.cant_num) AS cantidad_total,
+           COUNT(DISTINCT am.actividad_codigo) AS n,
+           MAX(am.reserva) AS reserva
+    FROM actividad_material am
+    JOIN catalogo c ON c.id = am.catalogo_id
+    WHERE am.actividad_codigo IN ($placeholders) AND c.tipo = 'material'
+    GROUP BY c.id
+    ORDER BY c.descripcion
+    ''',
+    codigos,
+  );
+  return [
+    for (final r in rows)
+      MaterialDeNivelExport(
+        // c.tipo='material' siempre trae codigo_erp (KTD5: sembrado por
+        // PIEZA desde el Excel) -- '' de respaldo, nunca debería usarse.
+        pieza: r['codigo_erp'] as String? ?? '',
+        descripcion: r['descripcion'] as String?,
+        cantidadTotal: r['cantidad_total'] as double?,
+        unidad: r['unidad'] as String?,
+        reserva: (r['reserva'] as int?) == 1,
+        numActividades: r['n'] as int,
+      ),
+  ];
+}
+
+/// Una fila de Export B (U13 / R27): herramienta o material de una
+/// actividad concreta, con el código ERP (vacío para las herramientas de
+/// VMI, que no tienen -- KTD5) y la cantidad numérica cuando se pudo
+/// parsear (para escribirla como número, no como texto, en el .xlsx).
+class ActividadMaterialExport {
+  final String descripcion;
+  final String? referencia;
+  final String? fabricante;
+  final String? codigoErp;
+  final double? cantidadNum;
+  final String? cantidadTexto;
+  final String? unidad;
+  final String? uso;
+  const ActividadMaterialExport({
+    required this.descripcion,
+    required this.referencia,
+    required this.fabricante,
+    required this.codigoErp,
+    required this.cantidadNum,
+    required this.cantidadTexto,
+    required this.unidad,
+    required this.uso,
+  });
+}
+
+/// Export B: herramientas y materiales de [codigoActividad], en el mismo
+/// orden (por tipo, luego descripción) que la tabla del detalle (U11).
+List<ActividadMaterialExport> materialesDeActividadParaExport(
+  Database db,
+  String codigoActividad,
+) {
+  final rows = db.select(
+    '''
+    SELECT c.descripcion, c.referencia, c.fabricante, c.codigo_erp,
+           am.cant, am.cant_num, am.ud, am.uso
+    FROM actividad_material am
+    JOIN catalogo c ON c.id = am.catalogo_id
+    WHERE am.actividad_codigo = ?
+    ORDER BY c.tipo, c.descripcion
+    ''',
+    [codigoActividad],
+  );
+  return [
+    for (final r in rows)
+      ActividadMaterialExport(
+        descripcion: r['descripcion'] as String? ?? '',
+        referencia: r['referencia'] as String?,
+        fabricante: r['fabricante'] as String?,
+        codigoErp: r['codigo_erp'] as String?,
+        cantidadNum: r['cant_num'] as double?,
+        cantidadTexto: r['cant'] as String?,
+        unidad: r['ud'] as String?,
+        uso: r['uso'] as String?,
+      ),
+  ];
+}

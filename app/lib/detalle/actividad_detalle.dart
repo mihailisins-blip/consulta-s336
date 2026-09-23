@@ -10,6 +10,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart' hide Row;
 
 import '../data/queries.dart';
+import '../export/export_xlsx.dart';
 import '../hub/por_ciclo_screen.dart';
 import '../hub/por_sistema_screen.dart';
 import '../hub/recientes.dart';
@@ -142,12 +143,25 @@ class ActividadDetalleScreen extends StatelessWidget {
               ],
             ),
           ],
-          if (detalle.vmiRelPath != null) ...[
+          if (detalle.vmiRelPath != null || detalle.materiales.isNotEmpty) ...[
             const SizedBox(height: 16),
-            FilledButton.icon(
-              icon: const Icon(Icons.picture_as_pdf_outlined),
-              label: const Text('Abrir PDF original (VMI)'),
-              onPressed: () => _abrirVmi(context, detalle),
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                if (detalle.vmiRelPath != null)
+                  FilledButton.icon(
+                    icon: const Icon(Icons.picture_as_pdf_outlined),
+                    label: const Text('Abrir PDF original (VMI)'),
+                    onPressed: () => _abrirVmi(context, detalle),
+                  ),
+                if (detalle.materiales.isNotEmpty)
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.file_download_outlined),
+                    label: const Text('Exportar herramientas y materiales'),
+                    onPressed: () => _exportar(context, detalle),
+                  ),
+              ],
             ),
           ],
         ],
@@ -191,6 +205,16 @@ class ActividadDetalleScreen extends StatelessWidget {
       MaterialPageRoute(
         builder: (_) => PdfViewerScreen(path: path, title: detalle.codigo),
       ),
+    );
+  }
+
+  Future<void> _exportar(BuildContext context, ActividadDetalle detalle) async {
+    final materiales = materialesDeActividadParaExport(db, detalle.codigo);
+    final bytes = xlsxBytesDeActividad(detalle.codigo, materiales);
+    await exportarYGuardar(
+      context,
+      nombreSugerido: 'materiales_${detalle.codigo}.xlsx',
+      bytes: bytes,
     );
   }
 }

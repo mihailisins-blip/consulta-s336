@@ -10,6 +10,7 @@ import 'package:sqlite3/sqlite3.dart' hide Row;
 
 import '../data/queries.dart';
 import '../detalle/actividad_detalle.dart';
+import '../export/export_xlsx.dart';
 import 'recientes.dart';
 
 const _programas = [
@@ -153,6 +154,20 @@ class _NivelContent extends StatelessWidget {
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               const Spacer(),
+              // Export A (R27/KTD6): materiales del acumulado, con ERP.
+              IconButton(
+                icon: const Icon(Icons.file_download_outlined),
+                tooltip: 'Exportar materiales a Excel',
+                onPressed: () async {
+                  final materiales = materialesDeNivelParaExport(db, nivelCodigo);
+                  final bytes = xlsxBytesDeNivel(nivelCodigo, materiales);
+                  await exportarYGuardar(
+                    context,
+                    nombreSugerido: 'materiales_$nivelCodigo.xlsx',
+                    bytes: bytes,
+                  );
+                },
+              ),
               // R12: el desglose por lote solo se ofrece cuando el nivel
               // está partido -- AE3.
               if (resultado.lotes.isNotEmpty)

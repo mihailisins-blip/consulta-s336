@@ -46,6 +46,20 @@ dependencies:
   # Visor de PDF embebido con salto a página (U11 / KTD8) -- multiplataforma
   # sobre PDFium, incluye Windows desktop.
   pdfrx: ^2.4.8
+  # Exportaciones a .xlsx (U13 / R27 / KTD6): el paquete `excel` fija
+  # `archive` en la rama 3.x, pero `pdfrx_engine` (arriba) fuerza la rama
+  # 4.x -- son incompatibles entre sí y ninguna versión de `excel` lo
+  # resuelve (comprobado). En vez de arriesgar un dependency_override no
+  # verificado o traer una librería comercial (Syncfusion XlsIO) solo para
+  # dos hojas planas, export_xlsx.dart escribe el OOXML mínimo a mano con
+  # el ZipEncoder de `archive`, que ya vive en el árbol de dependencias vía
+  # pdfrx_engine -- se declara aquí explícito en vez de depender en
+  # silencio de una transitiva.
+  archive: ^4.0.9
+  # Diálogo de "Guardar como" nativo (R27: "guardar con el diálogo de
+  # archivo del sistema") -- paquete oficial del equipo de Flutter, sin
+  # dependencia de archive.
+  file_selector: ^1.1.0
 
 dev_dependencies:
   flutter_test:
