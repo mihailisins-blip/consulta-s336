@@ -346,6 +346,7 @@ export function parseVmi(rawLines, { codigo }) {
     consumibles: { aplica: false },
     repuestos: { aplica: false },
     zonasTrabajo: null,
+    seguridad: null,
     procedimiento: { preambulo: null, fases: [] },
     sinExtraer: false,
     motivo: null,
@@ -364,6 +365,21 @@ export function parseVmi(rawLines, { codigo }) {
     const nexts = [3, 4, 5, 6].filter((k) => k > n && sections[k] !== undefined).map((k) => sections[k]);
     return nexts.length ? Math.min(...nexts) : lines.length;
   };
+
+  // Sección 1 (Medidas de seguridad, común a todo el VMI -- KTD9): se
+  // guarda como un único bloque de texto tal cual aparece en el documento,
+  // para mostrarlo colapsado en el detalle (R6) -- no se desglosa por
+  // sub-sección (1.1, 1.2...) ni por tipo de aviso (AVISO/PELIGRO/...), a
+  // diferencia de la sección 4 (procedimiento), que sí necesita esa
+  // estructura para los pasos. `endOf()` no sirve aquí -- omite la sección 2
+  // de su lista de "siguientes" a propósito (solo la usan las secciones
+  // 3/4) -- así que se corta directo en sections[2], que existe siempre que
+  // se llegue hasta aquí (sinSeccion2 ya habría retornado arriba).
+  if (sections[1] !== undefined) {
+    const s1 = lines.slice(sections[1] + 1, sections[2]);
+    const txt = s1.map((l) => l.text.trim()).filter(Boolean);
+    record.seguridad = txt.length ? txt.join('\n') : null;
+  }
 
   // Sección 2
   const s2 = lines.slice(sections[2] + 1, endOf(2));

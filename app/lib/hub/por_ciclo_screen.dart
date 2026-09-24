@@ -1,0 +1,274 @@
+// Navegación "por ciclo" (R9/R12/AE2/AE3): elegir programa (km / horas /
+// NS) y nivel -> conjunto ACUMULADO de actividades (un nivel incluye las de
+// todos los niveles anteriores del mismo programa -- R9), agrupadas por
+// sistema, con un desglose por lote cuando el nivel está partido.
+
+import 'package:flutter/material.dart';
+
+import '../app_session.dart';
+import '../data/queries.dart';
+import '../detalle/actividad_detalle.dart';
+import '../export/export_xlsx.dart';
+import 'recientes.dart';
+
+const _programas = [
+  ('km', 'Por kilómetros'),
+  ('horas', 'Por horas de motor (RDH)'),
+  ('ns', 'Según condición (NS)'),
+];
+
+class PorCicloScreen extends StatefulWidget {
+  final AppSession session;
+  /// Deep-link opcional (p. ej. desde el detalle de una actividad, "ir al
+  /// ciclo X") -- arranca ya en el programa y nivel de este código.
+  final String? nivelInicial;
+  const PorCicloScreen({super.key, required this.session, this.nivelInicial});
+
+  @override
+  State<PorCicloScreen> createState() => _PorCicloScreenState();
+}
+
+class _PorCicloScreenState extends State<PorCicloScreen> {
+  String _programa = 'km';
+  String? _nivelCodigo;
+  bool _verPorLote = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final inicial = widget.nivelInicial;
+    if (inicial != null) {
+      final programa = programaDeNivel(widget.session.db, inicial);
+      if (programa != null) {
+        _programa = programa;
+        _nivelCodigo = inicial;
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final niveles = listNiveles(widget.session.db, _programa);
+    // 'ns' solo tiene el nivel NS en sí -- se selecciona solo.
+    final nivelActivo = _nivelCodigo ?? (niveles.length == 1 ? niveles.first.codigo : null);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Por ciclo')),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: SegmentedButton<String>(
+              segments: [
+                for (final (value, label) in _programas)
+                  ButtonSegment(value: value, label: Text(label)),
+              ],
+              selected: {_programa},
+              onSelectionChanged: (s) => setState(() {
+                _programa = s.first;
+                _nivelCodigo = null;
+                _verPorLote = false;
+              }),
+            ),
+          ),
+          if (_programa != 'ns')
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Wrap(
+                spacing: 8,
+                children: [
+                  for (final n in niveles)
+                    ChoiceChip(
+                      label: Text(n.codigo),
+                      selected: nivelActivo == n.codigo,
+                      onSelected: (_) => setState(() {
+                        _nivelCodigo = n.codigo;
+                        _verPorLote = false;
+                      }),
+                    ),
+                ],
+              ),
+            ),
+          const Divider(height: 24),
+          Expanded(
+            child: nivelActivo == null
+                ? const Center(child: Text('Elige un nivel.'))
+                : _NivelContent(
+                    session: widget.session,
+                    nivelCodigo: nivelActivo,
+                    verPorLote: _verPorLote,
+                    onVerPorLoteChanged: (v) => setState(() => _verPorLote = v),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NivelContent extends StatelessWidget {
+  final AppSession session;
+  final String nivelCodigo;
+  final bool verPorLote;
+  final ValueChanged<bool> onVerPorLoteChanged;
+
+  const _NivelContent({
+    required this.session,
+    required this.nivelCodigo,
+    required this.verPorLote,
+    required this.onVerPorLoteChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final resultado = actividadesDeNivel(session.db, nivelCodigo);
+    // Diferido a después del build (no durante) -- ver el mismo comentario
+    // en actividad_detalle.dart: llamarlo aquí dispararía notifyListeners()
+    // mientras HubScreen, montado debajo en la pila del Navigator, está en
+    // medio de su propio build().
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      session.recientes.registrar(
+        RecienteEntry(tipo: 'ciclo', id: nivelCodigo, titulo: nivelCodigo),
+      );
+    });
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              Text(
+                '${resultado.codigos.length} actividades acumuladas en $nivelCodigo',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const Spacer(),
+              // Export A (R27/KTD6): materiales del acumulado, con ERP.
+              IconButton(
+                icon: const Icon(Icons.file_download_outlined),
+                tooltip: 'Exportar materiales a Excel',
+                onPressed: () async {
+                  final materiales = materialesDeNivelParaExport(session.db, nivelCodigo);
+                  final bytes = xlsxBytesDeNivel(nivelCodigo, materiales);
+                  await exportarYGuardar(
+                    context,
+                    nombreSugerido: 'materiales_$nivelCodigo.xlsx',
+                    bytes: bytes,
+                  );
+                },
+              ),
+              // R12: el desglose por lote solo se ofrece cuando el nivel
+              // está partido -- AE3.
+              if (resultado.lotes.isNotEmpty)
+                FilterChip(
+                  label: const Text('Ver por lote'),
+                  selected: verPorLote,
+                  onSelected: onVerPorLoteChanged,
+                ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: verPorLote && resultado.lotes.isNotEmpty
+              ? _PorLoteView(session: session, lotes: resultado.lotes)
+              : _AgrupadoPorSistemaView(session: session, codigos: resultado.codigos),
+        ),
+      ],
+    );
+  }
+}
+
+class _AgrupadoPorSistemaView extends StatelessWidget {
+  final AppSession session;
+  final List<String> codigos;
+  const _AgrupadoPorSistemaView({required this.session, required this.codigos});
+
+  @override
+  Widget build(BuildContext context) {
+    if (codigos.isEmpty) {
+      return const Center(child: Text('Ninguna actividad en este nivel.'));
+    }
+    final sistemaDe = sistemasDe(session.db, codigos);
+    final porSistema = <String, List<String>>{};
+    for (final c in codigos) {
+      porSistema.putIfAbsent(sistemaDe[c] ?? '(sin sistema)', () => []).add(c);
+    }
+    final sistemasOrdenados = porSistema.keys.toList()..sort();
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        for (final sis in sistemasOrdenados)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              children: [
+                Chip(label: Text(sis)),
+                ...porSistema[sis]!.map(
+                  (c) => ActionChip(
+                    label: Text(c),
+                    onPressed: () => _abrirActividad(context, session, c),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _PorLoteView extends StatelessWidget {
+  final AppSession session;
+  final List<String> lotes;
+  const _PorLoteView({required this.session, required this.lotes});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        for (final lote in lotes)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(lote, style: Theme.of(context).textTheme.titleSmall),
+                const SizedBox(height: 4),
+                Builder(
+                  builder: (context) {
+                    final acts = actividadesDeLote(session.db, lote);
+                    if (acts.isEmpty) {
+                      return const Text('(sin actividades vinculadas a este lote todavía)');
+                    }
+                    return Wrap(
+                      spacing: 8,
+                      children: [
+                        for (final c in acts)
+                          ActionChip(
+                            label: Text(c),
+                            onPressed: () => _abrirActividad(context, session, c),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+void _abrirActividad(BuildContext context, AppSession session, String codigo) {
+  Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => ActividadDetalleScreen(session: session, codigo: codigo),
+    ),
+  );
+}

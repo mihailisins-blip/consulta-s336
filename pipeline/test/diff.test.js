@@ -125,6 +125,38 @@ test('override sin destino: se copia igual (KTD7) pero se marca huérfano con un
   d2.close();
 });
 
+test('AE3/R11/R12: la pertenencia a lote cambiada entre extracciones se marca cambio_pendiente', async () => {
+  const v1 = path.join(tmp, 'lote1.sqlite');
+  const v2 = path.join(tmp, 'lote2.sqlite');
+
+  // v1: FD5.01.01 cae en IM1A por defecto (el fixture de materiales la
+  // pone ahí -- comprobado aparte contra el build real).
+  await build(v1, [vmi('VMI.3770.FD5.01.01')]);
+
+  // v2: misma actividad, pero simula que el curador reasignó su lote en
+  // el origen entre una extracción y la siguiente -- ahora cae en IM1B.
+  await build(v2, [vmi('VMI.3770.FD5.01.01')]);
+  const { DatabaseSync } = await import('node:sqlite');
+  const d2b = new DatabaseSync(v2);
+  d2b.exec("DELETE FROM actividad_lote WHERE actividad_codigo = 'FD5.01.01'");
+  d2b.prepare("INSERT INTO actividad_lote VALUES ('FD5.01.01','IM1B')").run();
+  d2b.close();
+
+  const res = await carryOverridesAndDiff(v2, v1);
+  assert.equal(res.cambiosPorEntidad.actividad_lote, 1);
+
+  const d2 = new DatabaseSync(v2, { readOnly: true });
+  const cp = d2.prepare(
+    "SELECT * FROM cambio_pendiente WHERE entidad='actividad_lote' AND id='FD5.01.01'",
+  ).get();
+  assert.ok(cp, 'debería haber un cambio_pendiente para la pertenencia a lote de FD5.01.01');
+  assert.equal(cp.campo, 'lote_codigo');
+  assert.equal(cp.valor_antes, 'IM1A');
+  assert.equal(cp.valor_despues, 'IM1B');
+  assert.equal(cp.revisado, 0);
+  d2.close();
+});
+
 test('un fallo a mitad de la copia hace ROLLBACK: no deja overrides a medio copiar ni deja el handle bloqueado', async () => {
   const v1 = path.join(tmp, 'fail1.sqlite');
   const v2 = path.join(tmp, 'fail2.sqlite');

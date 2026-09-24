@@ -84,6 +84,15 @@ test('zonas de trabajo se capturan como texto', () => {
   assert.match(parse('VMI.3770.RA1.01.01').zonasTrabajo, /Esquema del vehículo/);
 });
 
+test('medidas de seguridad (sección 1) se capturan como un bloque de texto único', () => {
+  const seguridad = parse('VMI.3770.FD5.02.04').seguridad;
+  assert.match(seguridad, /Riesgos generales asociados/);
+  assert.match(seguridad, /Equipos de protección personal/);
+  assert.match(seguridad, /Peligro de lesiones y daño a equipos/);
+  // no debe colarse la sección 2 (empieza justo después)
+  assert.doesNotMatch(seguridad, /Herramientas \/ Consumibles \/ Repuestos/);
+});
+
 test('AE1: un PDF sin la cabecera de sección 2 -> sinExtraer con motivo', () => {
   const lines = load('VMI.3770.FD5.01.01').filter(
     (l) => !/^2\s+Herramientas \/ Consumibles \/ Repuestos$/.test(l.text),
@@ -109,7 +118,7 @@ test('ningún campo extraído contiene el pie "Página N / M" ni "Fecha: dd.mm.a
     const r = parse(code);
     const blob = JSON.stringify({
       op: r.operacion, frec: r.frecuencia, comp: r.componente,
-      zonas: r.zonasTrabajo, proc: r.procedimiento, herr: r.herramientas, cons: r.consumibles,
+      zonas: r.zonasTrabajo, seg: r.seguridad, proc: r.procedimiento, herr: r.herramientas, cons: r.consumibles,
     });
     assert.doesNotMatch(blob, /Página\s+\d+\s*\/\s*\d+/, `${code}: se coló un pie de página`);
     assert.doesNotMatch(blob, /Fecha:\s*\d{2}\.\d{2}\.\d{4}/, `${code}: se coló la fecha de pie`);

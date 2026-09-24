@@ -29,6 +29,10 @@ CREATE TABLE nivel_ciclo (
 );
 CREATE TABLE lote (nivel TEXT, codigo TEXT);
 CREATE TABLE actividad_nivel (actividad_codigo TEXT, nivel_codigo TEXT);
+-- Qué actividad cae en qué lote (R11/R12/AE3: desglose por lote de un nivel
+-- partido) -- distinto de la tabla lote, que solo lista qué lotes existen
+-- por nivel, sin decir qué actividad va en cada uno.
+CREATE TABLE actividad_lote (actividad_codigo TEXT, lote_codigo TEXT);
 
 CREATE TABLE actividad (
   codigo TEXT PRIMARY KEY,
@@ -47,6 +51,7 @@ CREATE TABLE actividad (
   marca_seguridad INTEGER DEFAULT 0,
   observaciones_plan TEXT,
   zonas_trabajo TEXT,
+  seguridad TEXT,          -- texto de la sección 1 del VMI (R6, colapsable en la UI) -- v3
   duracion TEXT,          -- R7: la rellena el curador (vía overrides); reservado para el simulador
   zona TEXT,              -- R7: idem; la zona operativa "de simulación", distinta de zonas_trabajo del VMI
   fuente_vmi INTEGER, fuente_plan INTEGER, fuente_materiales INTEGER
@@ -164,8 +169,8 @@ function writeAll(db, { plan, materiales, model, catalog, join, vmiByCode, meta 
   const insAct = db.prepare(`INSERT INTO actividad
     (codigo,sistema_codigo,vmi_rel_path,ciclo_carpeta,sin_extraer,motivo,componente,actividad_tipo,
      operacion,frecuencia,edicion,fecha,descripcion_plan,marca_seguridad,observaciones_plan,zonas_trabajo,
-     fuente_vmi,fuente_plan,fuente_materiales)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+     seguridad,fuente_vmi,fuente_plan,fuente_materiales)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
   const insPaso = db.prepare('INSERT INTO actividad_paso VALUES (?,?,?,?,?)');
   const insActNivel = db.prepare('INSERT INTO actividad_nivel VALUES (?,?)');
   for (const a of join.actividades) {
@@ -176,6 +181,7 @@ function writeAll(db, { plan, materiales, model, catalog, join, vmiByCode, meta 
       a.sinExtraer ? 1 : 0, rec.motivo ?? null,
       a.componente, a.actividadTipo, a.operacion, rec.frecuencia ?? null, a.edicion, rec.fecha ?? null,
       a.descripcionPlan, a.marcaSeguridad ? 1 : 0, a.observacionesPlan, rec.zonasTrabajo ?? null,
+      rec.seguridad ?? null,
       a.fuentes.vmi ? 1 : 0, a.fuentes.plan ? 1 : 0, a.fuentes.materiales ? 1 : 0,
     );
     for (const nivel of a.ciclos ?? []) insActNivel.run(a.codigo, nivel);
@@ -197,6 +203,16 @@ function writeAll(db, { plan, materiales, model, catalog, join, vmiByCode, meta 
     const { codigos } = actividadesDeNivel(model, plan, nivel);
     for (const codigo of codigos) {
       if (codigosActividad.has(codigo)) insActNivel.run(codigo, nivel);
+    }
+  }
+
+  // --- actividad <-> lote (R11/R12/AE3: desglose por lote) ---
+  // Igual criterio que arriba: solo para códigos que son actividades reales
+  // de este build, no para cualquier tarea que aparezca en materiales.
+  const insActLote = db.prepare('INSERT INTO actividad_lote VALUES (?,?)');
+  for (const [loteCodigo, codigos] of Object.entries(model.actividadesPorLote ?? {})) {
+    for (const codigo of codigos) {
+      if (codigosActividad.has(codigo)) insActLote.run(codigo, loteCodigo);
     }
   }
 

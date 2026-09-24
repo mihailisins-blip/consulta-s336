@@ -40,15 +40,23 @@ export function buildCycleModel({ plan, materiales }) {
     intervaloH: RDH_INTERVALOS_H[codigo],
   }));
 
-  // lotes + membresía de materiales por nivel
+  // lotes + membresía de materiales por nivel y por lote
   /** @type {Record<string, Set<string>>} */
   const lotesSet = {};
   /** @type {Record<string, Set<string>>} */
   const materialesPorNivel = {};
+  // actividadesPorLote: código de lote completo (p.ej. "IM1A") -> tareas.
+  // A diferencia de lotesSet (solo qué lotes existen por nivel), esto es lo
+  // que permite el desglose por lote de R11/R12/AE3 -- qué actividad cae en
+  // cada lote, no solo qué lotes hay.
+  /** @type {Record<string, Set<string>>} */
+  const actividadesPorLote = {};
   for (const f of materiales?.filas ?? []) {
     if (!f.nivel) continue;
     if (f.lote) {
-      (lotesSet[f.nivel] ??= new Set()).add(f.nivel + f.lote);
+      const loteCodigo = f.nivel + f.lote;
+      (lotesSet[f.nivel] ??= new Set()).add(loteCodigo);
+      if (f.tarea) (actividadesPorLote[loteCodigo] ??= new Set()).add(f.tarea);
     }
     if (f.tarea) {
       (materialesPorNivel[f.nivel] ??= new Set()).add(f.tarea);
@@ -72,6 +80,9 @@ export function buildCycleModel({ plan, materiales }) {
     lotes,
     materialesPorNivel: Object.fromEntries(
       Object.entries(materialesPorNivel).map(([k, s]) => [k, [...s].sort()]),
+    ),
+    actividadesPorLote: Object.fromEntries(
+      Object.entries(actividadesPorLote).map(([k, s]) => [k, [...s].sort()]),
     ),
   };
 }

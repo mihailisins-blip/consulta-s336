@@ -34,6 +34,24 @@ test('lotes: niveles partidos se agrupan desde la columna PM', () => {
   assert.ok(!m.lotes.RDH2);
 });
 
+test('actividadesPorLote: qué actividad cae en cada lote (R11/R12/AE3)', () => {
+  const { model: m } = model();
+  assert.deepEqual(m.actividadesPorLote.IM1A, ['FD5.01.01', 'FD5.01.02']);
+  assert.deepEqual(m.actividadesPorLote.IM1B, ['TB1.02.01']);
+  assert.deepEqual(m.actividadesPorLote.IM1C, ['FC1.04.04']);
+  // AE3: unión de los lotes = el nivel completo, sin ninguna tarea repetida entre lotes
+  const deTodosLosLotes = [
+    ...m.actividadesPorLote.IM1A,
+    ...m.actividadesPorLote.IM1B,
+    ...m.actividadesPorLote.IM1C,
+  ];
+  assert.equal(
+    new Set(deTodosLosLotes).size,
+    deTodosLosLotes.length,
+    'ninguna actividad debería repetirse entre los lotes de IM1',
+  );
+});
+
 test('actividadesDeNivel para un nivel km sale de la matriz del plan', () => {
   const { plan, model: m } = model();
   const im1 = actividadesDeNivel(m, plan, 'IM1');

@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import { writeDatabase } from '../src/build/sqlite-writer.js';
 import { selectAndCopyPdfs, esVmiIndividual } from '../src/build/pdf-select-copy.js';
-import { writeManifest, readManifest } from '../src/build/manifest.js';
+import { writeManifest, readManifest, SCHEMA_VERSION } from '../src/build/manifest.js';
 import { parsePlan } from '../src/corpus/xlsx-plan.js';
 import { parseMateriales } from '../src/corpus/xlsx-materiales.js';
 import { parseVmi } from '../src/corpus/vmi-parser.js';
@@ -71,6 +71,21 @@ test('writeDatabase: data.sqlite abre y la búsqueda FTS devuelve la actividad',
   assert.ok(db.prepare('SELECT count(*) c FROM actividad_paso WHERE actividad_codigo = ?').get('FD5.02.04').c >= 10);
   assert.ok(db.prepare('SELECT count(*) c FROM actividad_material').get().c >= 5);
   assert.equal(db.prepare('SELECT revisado FROM ficha_sistema WHERE sistema_codigo = ?').get('FD5').revisado, 0);
+
+  // actividad_lote: FD5.01.01 es una actividad real de este build (tiene
+  // VMI) y el fixture de materiales la pone en el lote IM1A (R11/R12/AE3).
+  assert.ok(
+    db.prepare('SELECT 1 FROM actividad_lote WHERE actividad_codigo = ? AND lote_codigo = ?')
+      .get('FD5.01.01', 'IM1A'),
+    'FD5.01.01 debería estar en el lote IM1A',
+  );
+
+  // seguridad (v3): el texto de la sección 1 del VMI llega hasta la
+  // columna, no solo hasta el objeto parseado (R6/U11).
+  assert.match(
+    db.prepare('SELECT seguridad FROM actividad WHERE codigo = ?').get('FD5.02.04').seguridad,
+    /Riesgos generales asociados/,
+  );
   db.close();
 });
 
@@ -164,7 +179,7 @@ test('writeManifest: schema_version y data_folder_version presentes; --prev incr
     dataFolderVersion: 1, sources: { plan_xlsx: 'plan.xlsx' }, counts: { actividades: 437 },
     avisos: ["'PLAN MANTENIMIENTO': sin fila de cabecera"],
   });
-  assert.equal(m1.schema_version, 1);
+  assert.equal(m1.schema_version, SCHEMA_VERSION);
   assert.equal(m1.data_folder_version, 1);
   assert.match(m1.build_date, /^\d{4}-\d{2}-\d{2}T/);
   assert.deepEqual(m1.avisos, ["'PLAN MANTENIMIENTO': sin fila de cabecera"]);

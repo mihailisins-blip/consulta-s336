@@ -17,6 +17,12 @@ app/windows/flutter/ephemeral/
 # heavy local fixtures (real corpus excerpts kept out of git)
 pipeline/test/fixtures/real/
 
+# ... except the app's own real *.sqlite test fixtures (see
+# app/test/fixtures/README.md for provenance) -- *.sqlite above would
+# otherwise also catch these legitimate, intentionally-committed ones.
+!app/test/fixtures/data.sqlite
+!app/test/fixtures/data-lotes.sqlite
+
 # OS / editor
 Thumbs.db
 .DS_Store
