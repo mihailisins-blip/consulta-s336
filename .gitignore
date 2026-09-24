@@ -28,3 +28,8 @@ Thumbs.db
 .DS_Store
 .idea/
 .vscode/
+
+# packaging: nunca versionar una carpeta de datos real (grande,
+# específica del curador) ni el instalador compilado.
+packaging/datos/
+packaging/dist/
