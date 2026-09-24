@@ -13,7 +13,13 @@ import path from 'node:path';
 // descartaba su texto). Como en v2, una carpeta anterior no queda inválida
 // como dato -- solo hay que re-extraer para que esa columna deje de estar
 // vacía; la app SÍ exige que `schema_version` case exacto (AE6/R25).
-export const SCHEMA_VERSION = 3;
+// v4 (2026-09-24): añade `fusion_catalogo` (Fase C / U15 — R22: el registro
+// de las fusiones del curador, para poder deshacerlas). A diferencia de v2/
+// v3, esta tabla no la rellena la extracción -- la escribe la app en
+// tiempo de ejecución -- pero una carpeta anterior tampoco la tiene, así
+// que abrirla con la app nueva rompería igual (KTD3): sigue exigiendo el
+// mismo bump de versión que cualquier cambio de forma del esquema.
+export const SCHEMA_VERSION = 4;
 
 /**
  * @param {string} outDir

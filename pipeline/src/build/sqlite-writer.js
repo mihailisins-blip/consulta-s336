@@ -85,6 +85,16 @@ CREATE TABLE cambio_pendiente (
   revisado INTEGER DEFAULT 0
 );
 
+-- Registro de fusiones de catálogo (R22/KTD5/U15), para poder deshacerlas.
+-- El curador nunca la escribe directamente -- app/lib/curacion/fusion_catalogo.dart
+-- guarda aquí un snapshot de la entrada perdedora justo antes de borrarla,
+-- para poder restaurarla íntegra si la fusión fue un error.
+CREATE TABLE fusion_catalogo (
+  id INTEGER PRIMARY KEY,
+  superviviente_id TEXT, perdedor_id TEXT, perdedor_json TEXT,
+  fecha TEXT, deshecha INTEGER DEFAULT 0
+);
+
 CREATE INDEX ix_actividad_sistema ON actividad(sistema_codigo);
 CREATE INDEX ix_actnivel ON actividad_nivel(nivel_codigo);
 CREATE INDEX ix_actmat_act ON actividad_material(actividad_codigo);

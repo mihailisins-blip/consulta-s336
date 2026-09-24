@@ -1,8 +1,15 @@
 // Consultas de solo lectura sobre data.sqlite, compartidas por las pantallas
 // del hub (U10) y el detalle (U11). Deliberadamente sin dependencias de
 // Flutter -- son testeables sin montar ningún widget.
+//
+// `duracion`/`zona` de actividad y `codigoErp` de catálogo son la excepción
+// a "solo lectura": son campos editables por el curador (R7/R8/U14), así
+// que se componen aquí mismo como `override ?? extraído` (overrides.dart)
+// para que cualquier pantalla que los lea ya reciba el valor compuesto.
 
 import 'package:sqlite3/sqlite3.dart';
+
+import 'overrides.dart';
 
 class Sistema {
   final String codigo;
@@ -139,6 +146,12 @@ class ActividadDetalle {
   final List<ActividadPaso> pasos;
   final List<ActividadMaterial> materiales;
 
+  /// Campos reservados para el futuro simulador de tiempos (R7): sin
+  /// lógica asociada en este plan, solo editables por el curador
+  /// (`override ?? extraído`) -- la UI de técnico no los muestra (R18).
+  final String? duracion;
+  final String? zona;
+
   const ActividadDetalle({
     required this.codigo,
     required this.edicion,
@@ -156,6 +169,8 @@ class ActividadDetalle {
     required this.niveles,
     required this.pasos,
     required this.materiales,
+    required this.duracion,
+    required this.zona,
   });
 }
 
@@ -446,6 +461,8 @@ ActividadDetalle? getActividadDetalle(Database db, String codigo) {
     niveles: niveles,
     pasos: pasos,
     materiales: materiales,
+    duracion: overrideValor(db, 'actividad', codigo, 'duracion') ?? r['duracion'] as String?,
+    zona: overrideValor(db, 'actividad', codigo, 'zona') ?? r['zona'] as String?,
   );
 }
 
@@ -523,7 +540,8 @@ List<CatalogoEntrada> listCatalogo(Database db) {
     for (final r in rows)
       CatalogoEntrada(
         id: r['id'] as String,
-        codigoErp: r['codigo_erp'] as String?,
+        codigoErp: overrideValor(db, 'catalogo', r['id'] as String, 'codigo_erp') ??
+            r['codigo_erp'] as String?,
         descripcion: r['descripcion'] as String?,
         fabricante: r['fabricante'] as String?,
         unidad: r['unidad'] as String?,
@@ -565,7 +583,7 @@ List<MaterialDeNivelExport> materialesDeNivelParaExport(
   final placeholders = List.filled(codigos.length, '?').join(',');
   final rows = db.select(
     '''
-    SELECT c.codigo_erp, c.descripcion, c.unidad,
+    SELECT c.id AS catalogo_id, c.codigo_erp, c.descripcion, c.unidad,
            SUM(am.cant_num) AS cantidad_total,
            COUNT(DISTINCT am.actividad_codigo) AS n,
            MAX(am.reserva) AS reserva
@@ -582,7 +600,10 @@ List<MaterialDeNivelExport> materialesDeNivelParaExport(
       MaterialDeNivelExport(
         // c.tipo='material' siempre trae codigo_erp (KTD5: sembrado por
         // PIEZA desde el Excel) -- '' de respaldo, nunca debería usarse.
-        pieza: r['codigo_erp'] as String? ?? '',
+        // Compuesto con el override del curador (U14/R8), si lo hay.
+        pieza: overrideValor(db, 'catalogo', r['catalogo_id'] as String, 'codigo_erp') ??
+            r['codigo_erp'] as String? ??
+            '',
         descripcion: r['descripcion'] as String?,
         cantidadTotal: r['cantidad_total'] as double?,
         unidad: r['unidad'] as String?,
@@ -625,7 +646,7 @@ List<ActividadMaterialExport> materialesDeActividadParaExport(
 ) {
   final rows = db.select(
     '''
-    SELECT c.descripcion, c.referencia, c.fabricante, c.codigo_erp,
+    SELECT c.id AS catalogo_id, c.descripcion, c.referencia, c.fabricante, c.codigo_erp,
            am.cant, am.cant_num, am.ud, am.uso
     FROM actividad_material am
     JOIN catalogo c ON c.id = am.catalogo_id
@@ -640,7 +661,8 @@ List<ActividadMaterialExport> materialesDeActividadParaExport(
         descripcion: r['descripcion'] as String? ?? '',
         referencia: r['referencia'] as String?,
         fabricante: r['fabricante'] as String?,
-        codigoErp: r['codigo_erp'] as String?,
+        codigoErp: overrideValor(db, 'catalogo', r['catalogo_id'] as String, 'codigo_erp') ??
+            r['codigo_erp'] as String?,
         cantidadNum: r['cant_num'] as double?,
         cantidadTexto: r['cant'] as String?,
         unidad: r['ud'] as String?,
