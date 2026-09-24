@@ -1,12 +1,13 @@
 // Navegación "por sistema" (R13/R15): lista de sistemas -> ficha del
 // sistema + sus manuales de `05` + sus actividades agrupadas por ciclo. El
-// técnico solo consulta -- ningún control de edición aquí (R18; la edición
-// es U14/Fase C).
+// técnico solo consulta (R18); el curador (U15) ve el editor de la ficha
+// en su lugar -- ver curacion/revision_fichas.dart.
 
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
 import '../app_session.dart';
+import '../curacion/revision_fichas.dart';
 import '../data/queries.dart';
 import '../detalle/actividad_detalle.dart';
 import '../detalle/pdf_viewer.dart';
@@ -73,7 +74,12 @@ class SistemaDetalleScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          if (detalle.ficha != null) ...[
+          // R20: el técnico ve siempre la ficha (esté revisada o no) --
+          // solo el curador (R18/U15) ve el editor en su lugar.
+          if (session.editMode) ...[
+            FichaEditor(db: session.db, sistemaCodigo: codigo, fichaInicial: detalle.ficha),
+            const SizedBox(height: 16),
+          ] else if (detalle.ficha != null) ...[
             Row(
               children: [
                 Icon(

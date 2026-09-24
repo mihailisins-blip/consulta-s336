@@ -21,15 +21,16 @@ entorno no tiene. Válido para search_service_test.dart (no toca esas
 tablas); no usar para nada que necesite actividad_lote, niveles RDH o
 texto de medidas de seguridad.
 
-## `data-lotes.sqlite` (pequeño, esquema v3)
+## `data-lotes.sqlite` (pequeño, esquema v4)
 
 Generado con `pipeline/scripts/gen-app-fixture.mjs`, que reutiliza los
 mismos 4 VMI reales de `pipeline/test/fixtures/vmi/` y los workbooks de
 `pipeline/test/helpers/xlsx-fixtures.js` que ya usa la suite de tests de
 `pipeline/` -- real en cuanto al esquema (lo escribe el propio
 `sqlite-writer.js`), pequeño porque no requiere el corpus completo.
-Sí tiene `actividad_lote` y `actividad.seguridad` (FD5.02.04 trae texto real
-de la sección 1 del VMI). Para regenerarlo tras un cambio de esquema:
+Sí tiene `actividad_lote`, `actividad.seguridad` (FD5.02.04 trae texto real
+de la sección 1 del VMI) y `fusion_catalogo` (v4, vacía hasta que un test
+la usa). Para regenerarlo tras un cambio de esquema:
 
 ```
 cd pipeline

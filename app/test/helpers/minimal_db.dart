@@ -35,10 +35,19 @@ Database openMinimalTestDb() {
       actividad_codigo TEXT, catalogo_id TEXT, cant TEXT, cant_num REAL,
       ud TEXT, uso TEXT, reserva INTEGER, fuente TEXT
     );
+    CREATE TABLE catalogo_alias (catalogo_id TEXT, alias TEXT);
     CREATE TABLE manual_toc (manual_id INTEGER, orden INTEGER, titulo TEXT, pagina INTEGER, nivel INTEGER);
     CREATE TABLE overrides (
       entidad TEXT, id TEXT, campo TEXT, valor TEXT, actualizado TEXT,
       PRIMARY KEY (entidad, id, campo)
+    );
+    -- No es la tabla FTS5 virtual real (sin MATCH aquí) -- basta esta forma
+    -- plana para que el DELETE de fusion_catalogo.dart tenga dónde operar.
+    CREATE TABLE busqueda (tipo TEXT, ref TEXT, titulo TEXT, cuerpo TEXT);
+    CREATE TABLE fusion_catalogo (
+      id INTEGER PRIMARY KEY,
+      superviviente_id TEXT, perdedor_id TEXT, perdedor_json TEXT,
+      fecha TEXT, deshecha INTEGER DEFAULT 0
     );
   ''');
   return db;
