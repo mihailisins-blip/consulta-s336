@@ -1,12 +1,15 @@
 // Detalle de una actividad (R6/U11): cabecera, ciclos en que aplica,
 // herramientas/consumibles con cantidad y uso, zona de trabajo,
 // procedimiento por pasos, y medidas de seguridad colapsadas (KTD9). Solo
-// lectura -- el técnico consulta, no edita (R18; la edición es Fase C).
+// lectura para el técnico (R18); el curador (R18/U14) ve además una
+// sección editable para los campos reservados al simulador (R7).
 
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
 import '../app_session.dart';
+import '../curacion/campo_editable.dart';
+import '../data/overrides.dart';
 import '../data/queries.dart';
 import '../export/export_xlsx.dart';
 import '../hub/por_ciclo_screen.dart';
@@ -158,6 +161,30 @@ class ActividadDetalleScreen extends StatelessWidget {
                     label: const Text('Exportar herramientas y materiales'),
                     onPressed: () => _exportar(context, detalle),
                   ),
+              ],
+            ),
+          ],
+          // R7/U14: reservados para el futuro simulador de tiempos, sin
+          // lógica asociada aquí -- solo visibles y editables para el
+          // curador (R18), nunca para el técnico.
+          if (session.editMode) ...[
+            const SizedBox(height: 16),
+            Text('Datos del curador', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 16,
+              runSpacing: 8,
+              children: [
+                CampoEditable(
+                  etiqueta: 'Duración',
+                  valorInicial: detalle.duracion,
+                  onGuardar: (v) => guardarOverride(session.db, 'actividad', detalle.codigo, 'duracion', v),
+                ),
+                CampoEditable(
+                  etiqueta: 'Zona',
+                  valorInicial: detalle.zona,
+                  onGuardar: (v) => guardarOverride(session.db, 'actividad', detalle.codigo, 'zona', v),
+                ),
               ],
             ),
           ],

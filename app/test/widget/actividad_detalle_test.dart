@@ -14,6 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 import 'package:consulta_s336_app/app_session.dart';
+import 'package:consulta_s336_app/data/overrides.dart';
 import 'package:consulta_s336_app/detalle/actividad_detalle.dart';
 import 'package:consulta_s336_app/hub/recientes.dart';
 
@@ -144,6 +145,64 @@ void main() {
       expect(find.text('Consumibles y repuestos'), findsNothing);
       expect(find.text('Procedimiento'), findsNothing);
       expect(find.text('Exportar herramientas y materiales'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'U14/R18: sin modo edición (sin centinela), no aparece la sección "Datos del curador"',
+    (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          ActividadDetalleScreen(
+            session: AppSession(db: db, dataDir: r'C:\no-existe', recientes: RecientesController()),
+            codigo: 'FD5.02.04',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Datos del curador'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'U14/R7/R19: en modo edición, "Datos del curador" permite editar la duración y el override persiste',
+    (tester) async {
+      // El fixture real se abre en solo lectura (real_db.dart) para no
+      // mutar el archivo comprobado en el repo -- un test que escribe un
+      // override necesita una base en memoria, escribible, como la AE1 de
+      // más arriba.
+      final minimalDb = openMinimalTestDb();
+      addTearDown(minimalDb.dispose);
+      minimalDb.execute('''
+        INSERT INTO actividad
+          (codigo,sistema_codigo,vmi_rel_path,sin_extraer,componente,actividad_tipo,operacion,frecuencia,edicion)
+        VALUES
+          ('FD5.02.04','FD5','x/VMI.pdf',0,'REDUCTOR','SUSTITUCIÓN','Cambio de grasa','La indicada en el plan','--')
+      ''');
+
+      final session = AppSession(
+        db: minimalDb,
+        dataDir: r'C:\no-existe',
+        recientes: RecientesController(),
+        editMode: true,
+      );
+      await tester.pumpWidget(
+        wrap(ActividadDetalleScreen(session: session, codigo: 'FD5.02.04')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Datos del curador'), findsOneWidget);
+      expect(find.text('Duración: (sin definir)'), findsOneWidget);
+
+      await tester.tap(find.widgetWithIcon(IconButton, Icons.edit_outlined).first);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).first, '45 min');
+      await tester.tap(find.widgetWithIcon(IconButton, Icons.check));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Duración: 45 min'), findsOneWidget);
+      expect(overrideValor(minimalDb, 'actividad', 'FD5.02.04', 'duracion'), '45 min');
     },
   );
 }

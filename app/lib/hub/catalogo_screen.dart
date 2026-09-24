@@ -1,10 +1,13 @@
 // Catálogo de herramientas y consumibles (R8/R13): listado navegable. Cada
 // entrada abre el filtro bidireccional actividad<->material (R17/AE7):
 // qué actividades usan esta herramienta o consumible, en cualquier ciclo.
+// El curador (U14/R8) puede editar el código ERP in-place desde el detalle.
 
 import 'package:flutter/material.dart';
 
 import '../app_session.dart';
+import '../curacion/campo_editable.dart';
+import '../data/overrides.dart';
 import '../data/queries.dart';
 import '../detalle/actividad_detalle.dart';
 import 'recientes.dart';
@@ -66,10 +69,21 @@ class CatalogoEntradaDetalleScreen extends StatelessWidget {
         children: [
           Wrap(
             spacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               if (entrada.fabricante != null) Chip(label: Text(entrada.fabricante!)),
               if (entrada.unidad != null) Chip(label: Text(entrada.unidad!)),
-              if (entrada.codigoErp != null) Chip(label: Text('ERP ${entrada.codigoErp}')),
+              // Con centinela de curador (U14/R8): editable in-place -- el
+              // curador "lo valida y completa" (KD7) directamente aquí, sin
+              // salir del detalle. Sin él, el técnico solo ve el chip.
+              if (session.editMode)
+                CampoEditable(
+                  etiqueta: 'Código ERP',
+                  valorInicial: entrada.codigoErp,
+                  onGuardar: (v) => guardarOverride(session.db, 'catalogo', entrada.id, 'codigo_erp', v),
+                )
+              else if (entrada.codigoErp != null)
+                Chip(label: Text('ERP ${entrada.codigoErp}')),
             ],
           ),
           const SizedBox(height: 16),
