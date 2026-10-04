@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 import '../app_session.dart';
+import '../curacion/revision_cambios.dart';
+import '../curacion/revision_screen.dart';
 import '../detalle/actividad_detalle.dart';
 import '../search/search_service.dart';
 import 'catalogo_screen.dart';
@@ -145,6 +147,22 @@ class _HubScreenState extends State<HubScreen> {
                     ),
                   ),
                 ),
+                // Solo en la copia del curador (R18): lo que dejó la última
+                // re-extracción por revisar (R21). Al volver se refresca el
+                // contador, que puede haber cambiado.
+                if (_session.editMode)
+                  _HubEntryCard(
+                    icon: Icons.fact_check_outlined,
+                    label: 'Revisión (${contarCambiosSinRevisar(widget.db)})',
+                    onTap: () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => RevisionScreen(session: _session),
+                        ),
+                      );
+                      if (mounted) setState(() {});
+                    },
+                  ),
               ],
             ),
             const SizedBox(height: 24),
