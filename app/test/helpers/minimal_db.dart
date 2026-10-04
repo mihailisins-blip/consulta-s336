@@ -44,6 +44,11 @@ Database openMinimalTestDb() {
     -- No es la tabla FTS5 virtual real (sin MATCH aquí) -- basta esta forma
     -- plana para que el DELETE de fusion_catalogo.dart tenga dónde operar.
     CREATE TABLE busqueda (tipo TEXT, ref TEXT, titulo TEXT, cuerpo TEXT);
+    CREATE TABLE incidencia_extraccion (tipo TEXT, ref TEXT, detalle TEXT);
+    CREATE TABLE cambio_pendiente (
+      entidad TEXT, id TEXT, campo TEXT, valor_antes TEXT, valor_despues TEXT,
+      revisado INTEGER DEFAULT 0
+    );
     CREATE TABLE fusion_catalogo (
       id INTEGER PRIMARY KEY,
       superviviente_id TEXT, perdedor_id TEXT, perdedor_json TEXT,
