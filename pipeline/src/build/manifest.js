@@ -19,7 +19,10 @@ import path from 'node:path';
 // tiempo de ejecución -- pero una carpeta anterior tampoco la tiene, así
 // que abrirla con la app nueva rompería igual (KTD3): sigue exigiendo el
 // mismo bump de versión que cualquier cambio de forma del esquema.
-export const SCHEMA_VERSION = 4;
+// v5 (2026-10-04): añade `actividad_figura` (recuadros de las figuras de las
+// secciones 3 y 4 del VMI, que la app recorta del PDF). Re-extraer para que
+// las actividades muestren sus imágenes.
+export const SCHEMA_VERSION = 5;
 
 /**
  * @param {string} outDir

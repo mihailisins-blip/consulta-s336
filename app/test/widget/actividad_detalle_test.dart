@@ -205,4 +205,33 @@ void main() {
       expect(overrideValor(minimalDb, 'actividad', 'FD5.02.04', 'duracion'), '45 min');
     },
   );
+
+  testWidgets(
+    'FD5.02.04: figuras de zonas de trabajo y del procedimiento, en su sitio',
+    (tester) async {
+      await agrandarViewport(tester);
+      await tester.pumpWidget(
+        wrap(
+          ActividadDetalleScreen(
+            session: AppSession(db: db, dataDir: r'C:\no-existe', recientes: RecientesController()),
+            codigo: 'FD5.02.04',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Sin el PDF copiado (dataDir inexistente) cada figura degrada a un
+      // aviso con su página, pero el pie sigue saliendo.
+      expect(find.text('Esquema del vehículo'), findsOneWidget);
+      expect(find.text('Localización del acoplamiento'), findsOneWidget);
+      expect(find.text('Figura en la página 6 del VMI'), findsNWidgets(2));
+      expect(find.text('Anillo de empuje'), findsOneWidget);
+
+      // "Anillo de empuje" va entre el paso 9 y el 10 del desmontaje
+      final figura = tester.getTopLeft(find.text('Anillo de empuje')).dy;
+      final paso9 = tester.getTopLeft(find.textContaining(RegExp(r'^9\. Retirar el anillo de láminas'))).dy;
+      final paso10 = tester.getTopLeft(find.textContaining(RegExp(r'^10\. Quitar los elementos'))).dy;
+      expect(paso9 < figura && figura < paso10, true);
+    },
+  );
 }

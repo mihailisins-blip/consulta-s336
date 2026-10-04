@@ -124,3 +124,38 @@ test('ningún campo extraído contiene el pie "Página N / M" ni "Fecha: dd.mm.a
     assert.doesNotMatch(blob, /Fecha:\s*\d{2}\.\d{2}\.\d{4}/, `${code}: se coló la fecha de pie`);
   }
 });
+
+test('figuras: esquemas de zonas de trabajo con su pie (sección 3)', () => {
+  const zonas = parse('VMI.3770.FD5.02.04').figuras.filter((f) => f.seccion === 'zonas');
+  assert.deepEqual(zonas.map((f) => [f.pagina, f.pie]), [
+    [6, 'Esquema del vehículo'],
+    [6, 'Localización del acoplamiento'],
+  ]);
+  for (const f of zonas) {
+    assert.ok(f.y1 - f.y0 > 200, 'recuadro de figura demasiado bajo');
+    assert.equal(f.antesDePaso, null);
+  }
+});
+
+test('figuras del procedimiento: se sitúan antes del paso que las sigue', () => {
+  const r = parse('VMI.3770.FD5.02.04');
+  const pasos = r.procedimiento.fases.flatMap((f) => f.pasos);
+  const proc = r.figuras.filter((f) => f.seccion === 'procedimiento');
+  const anillo = proc.find((f) => f.pie === 'Anillo de empuje');
+  assert.equal(anillo.pagina, 8);
+  // la figura "Anillo de empuje" va entre el paso 9 y el 10 del desmontaje
+  assert.equal(pasos[anillo.antesDePaso].n, 10);
+  assert.equal(proc[0].pie, 'Mitad acoplamiento lado reductora');
+  assert.equal(pasos[proc[0].antesDePaso].n, 1);
+});
+
+test('figuras: la cabecera repetida de página no entra en el recuadro; sin pie, null', () => {
+  const ra1 = parse('VMI.3770.RA1.01.01').figuras;
+  assert.ok(ra1.some((f) => f.pie === 'Pupitre de conducción'));
+  for (const f of ra1) assert.ok(f.y1 < 785);
+  // FD5.01.01 p.6: tras el hueco va directamente la leyenda ("1 Reductora 2 ...")
+  const fd5 = parse('VMI.3770.FD5.01.01').figuras.find((f) => f.pagina === 6);
+  assert.equal(fd5.pie, null);
+  // la última figura (tras el paso 8) no tiene paso después
+  assert.equal(parse('VMI.3770.FD5.01.01').figuras.at(-1).antesDePaso, null);
+});

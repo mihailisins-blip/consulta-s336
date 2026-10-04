@@ -18,7 +18,9 @@ import 'package:path/path.dart' as p;
 /// v3 (2026-09-23) añadió `actividad.seguridad`, el texto de la sección 1
 /// del VMI (R6/U11).
 /// v4 (2026-09-24) añadió `fusion_catalogo` (R22/U15).
-const int kExpectedSchemaVersion = 4;
+/// v5 (2026-10-04) añadió `actividad_figura`, las figuras de las secciones
+/// 3 y 4 del VMI (data/figuras.dart).
+const int kExpectedSchemaVersion = 5;
 
 /// Resultado de intentar cargar la carpeta de datos. Sellada a propósito:
 /// el llamador (main.dart) debe manejar los cuatro casos explícitamente.

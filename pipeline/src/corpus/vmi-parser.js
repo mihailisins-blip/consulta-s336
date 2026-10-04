@@ -241,7 +241,9 @@ function parseProcedimiento(lines) {
   let paso = null;
   let callout = null;      // { titulo, texto } en curso
   let seenStepOrPhase = false;
-  const items = lines.map((l) => ({ x: l.x, t: l.text.trim() })).filter((it) => it.t);
+  /** posición de cada paso en el PDF, en el mismo orden plano que `orden` en actividad_paso */
+  const pasosPos = [];
+  const items = lines.map((l) => ({ x: l.x, t: l.text.trim(), page: l.page, y: l.y })).filter((it) => it.t);
 
   const flushCallout = () => {
     if (!callout) return;
@@ -252,7 +254,7 @@ function parseProcedimiento(lines) {
   };
 
   for (let i = 0; i < items.length; i++) {
-    const { x, t } = items[i];
+    const { x, t, page, y } = items[i];
     const next = items[i + 1]?.t ?? '';
     const next2 = items[i + 2]?.t ?? '';
 
@@ -269,6 +271,7 @@ function parseProcedimiento(lines) {
       if (!fase) fase = nuevaFase('');
       paso = { n: Number(stepM[1]), texto: stepM[2].trim(), subpasos: [], notas: [] };
       fase.pasos.push(paso);
+      pasosPos.push({ page, y });
       continue;
     }
     const subM = t.match(reSubstep);
@@ -306,10 +309,73 @@ function parseProcedimiento(lines) {
 
   for (const f of fases) for (const p of f.pasos) p.texto = p.texto.replace(/\s+/g, ' ').trim();
   return {
-    preambulo: preambulo.replace(/\s+/g, ' ').trim() || null,
-    notas: preNotas,
-    fases: fases.filter((f) => f.titulo || f.pasos.length),
+    procedimiento: {
+      preambulo: preambulo.replace(/\s+/g, ' ').trim() || null,
+      notas: preNotas,
+      fases: fases.filter((f) => f.titulo || f.pasos.length),
+    },
+    pasosPos,
   };
+}
+
+// Figuras (secciones 3 y 4). En la plantilla VMI cada figura -- esquema del
+// vehículo, localización del componente, despiece -- ocupa un hueco vertical
+// limpio en el texto y lleva su pie justo debajo ("Esquema del vehículo",
+// "Mitad acoplamiento lado reductora"...), seguido a veces de su leyenda
+// ("002 Cuerpo de acoplamiento ..."). No se extrae la imagen en sí: se
+// guarda la página y el recuadro (en puntos PDF, origen abajo-izquierda) y
+// la app lo recorta del PDF ya copiado a pdfs/. Así da igual que la figura
+// sea un raster o un dibujo vectorial.
+
+/** hueco vertical mínimo (pt) entre dos líneas para considerarlo una figura */
+const FIG_GAP = 80;
+const reLegend = /^\d{1,3}\s+\S/;
+const fy = (l) => l.page * 10000 + (1000 - l.y); // orden de lectura
+
+/**
+ * @param {PdfLine[]} raw    líneas sin limpiar (con cabecera y pie de página: acotan el hueco)
+ * @param {{page:number,y:number}} desde  inicio de la sección 3
+ * @param {{page:number,y:number}|null} hasta  inicio de la sección 5/6 (o null)
+ * @param {{page:number,y:number}|null} inicioS4
+ * @param {{page:number,y:number}[]} pasosPos
+ */
+function detectFiguras(raw, desde, hasta, inicioS4, pasosPos) {
+  const out = [];
+  const pages = [...new Set(raw.map((l) => l.page))].sort((a, b) => a - b);
+  for (const pn of pages) {
+    const pl = raw.filter((l) => l.page === pn).sort((a, b) => b.y - a.y);
+    for (let i = 0; i + 1 < pl.length; i++) {
+      const top = pl[i];
+      if (fy(top) < fy(desde)) continue;
+      if (hasta && fy(top) >= fy(hasta)) break;
+      if (top.y - pl[i + 1].y <= FIG_GAP) continue;
+      // el pie es la primera línea tras el hueco; un fragmento suelto ("re",
+      // una cota) es texto dentro de la propia figura, y el pie va después.
+      let j = i + 1;
+      while (j + 1 < pl.length && pl[j].text.trim().length < 4) j++;
+      const pie = pl[j];
+      if (reFooter.test(pie.text)) continue; // blanco al final de página, no una figura
+      const y0 = pie.y + 12; // por encima de la línea base del pie
+      // por debajo de los descendentes de la línea anterior; si esa línea es
+      // la cabecera repetida de página (y>=785, como en cleanLines), por
+      // debajo de la franja de cabecera.
+      const y1 = top.y >= 785 ? 781 : top.y - 4;
+      if (y1 - y0 < FIG_GAP / 2) continue;
+      const pos = fy({ page: pn, y: (y0 + y1) / 2 });
+      const seccion = inicioS4 && pos > fy(inicioS4) ? 'procedimiento' : 'zonas';
+      const antes = seccion === 'procedimiento' ? pasosPos.findIndex((p) => fy(p) > pos) : -1;
+      out.push({
+        pagina: pn,
+        y0,
+        y1,
+        // sin pie propio, la primera línea tras el hueco es ya la leyenda ("1 Reductora 2 ...")
+        pie: reLegend.test(pie.text) ? null : pie.text.trim(),
+        seccion,
+        antesDePaso: antes >= 0 ? antes : null,
+      });
+    }
+  }
+  return out;
 }
 
 /**
@@ -348,6 +414,7 @@ export function parseVmi(rawLines, { codigo }) {
     zonasTrabajo: null,
     seguridad: null,
     procedimiento: { preambulo: null, fases: [] },
+    figuras: [],
     sinExtraer: false,
     motivo: null,
   };
@@ -406,9 +473,21 @@ export function parseVmi(rawLines, { codigo }) {
   }
 
   // Sección 4
+  let pasosPos = [];
   if (sections[4] !== undefined) {
     const s4 = lines.slice(sections[4] + 1, endOf(4));
-    record.procedimiento = parseProcedimiento(s4);
+    ({ procedimiento: record.procedimiento, pasosPos } = parseProcedimiento(s4));
+  }
+
+  if (sections[3] !== undefined) {
+    const fin = sections[5] ?? sections[6];
+    record.figuras = detectFiguras(
+      rawLines,
+      lines[sections[3]],
+      fin !== undefined ? lines[fin] : null,
+      sections[4] !== undefined ? lines[sections[4]] : null,
+      pasosPos,
+    );
   }
 
   return record;
