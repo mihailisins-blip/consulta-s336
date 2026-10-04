@@ -85,6 +85,25 @@ test('runBuild rechaza --prev contra una carpeta de esquema distinto, antes de t
   });
 });
 
+test('runBuild acepta --prev de una carpeta v4 (v5 solo añade actividad_figura): no aborta por el guard', async () => {
+  const prevDir = path.join(tmp, 'prev-v4');
+  await fs.mkdir(prevDir, { recursive: true });
+  await fs.writeFile(
+    path.join(prevDir, 'manifest.json'),
+    JSON.stringify({ schema_version: 4, data_folder_version: 2 }),
+  );
+  const cfg = {
+    outDir: path.join(tmp, 'out-v4'),
+    roots: {
+      plan: path.join(tmp, 'no-existe-plan-v4'),
+      vmi: path.join(tmp, 'no-existe-vmi-v4'),
+      manuales: path.join(tmp, 'no-existe-manuales-v4'),
+      materiales: path.join(tmp, 'no-existe-materiales-v4'),
+    },
+  };
+  await assert.rejects(runBuild({ cfg, prevDir }), /no se encontr[oó]/i);
+});
+
 test('runBuild con --prev del mismo esquema no aborta por el guard (falla más adelante, por corpus inexistente)', async () => {
   const prevDir = path.join(tmp, 'prev-mismo');
   await fs.mkdir(prevDir, { recursive: true });

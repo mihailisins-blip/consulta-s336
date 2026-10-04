@@ -24,6 +24,12 @@ import path from 'node:path';
 // las actividades muestren sus imágenes.
 export const SCHEMA_VERSION = 5;
 
+// Esquemas anteriores contra los que se puede re-extraer con --prev sin
+// riesgo: solo cuando el cambio de versión no toca ninguna tabla que lea
+// build/diff.js (overrides, ficha_sistema, actividad, actividad_material,
+// actividad_lote, catalogo, sistema). v4 -> v5 solo añade actividad_figura.
+export const PREV_SCHEMAS_COMPATIBLES = new Set([SCHEMA_VERSION, 4]);
+
 /**
  * @param {string} outDir
  * @param {object} info
