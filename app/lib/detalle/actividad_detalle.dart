@@ -9,12 +9,14 @@ import 'package:path/path.dart' as p;
 
 import '../app_session.dart';
 import '../curacion/campo_editable.dart';
+import '../data/figuras.dart';
 import '../data/overrides.dart';
 import '../data/queries.dart';
 import '../export/export_xlsx.dart';
 import '../hub/por_ciclo_screen.dart';
 import '../hub/por_sistema_screen.dart';
 import '../hub/recientes.dart';
+import 'figura_vmi.dart';
 import 'pdf_viewer.dart';
 
 class ActividadDetalleScreen extends StatelessWidget {
@@ -45,6 +47,19 @@ class ActividadDetalleScreen extends StatelessWidget {
 
     final herramientas = detalle.materiales.where((m) => m.tipo == 'herramienta').toList();
     final consumibles = detalle.materiales.where((m) => m.tipo != 'herramienta').toList();
+    // Figuras de las secciones 3 y 4, recortadas del VMI copiado a pdfs/
+    // (sin VMI vinculado no hay de dónde recortarlas).
+    final figuras = detalle.vmiRelPath == null
+        ? const <ActividadFigura>[]
+        : getActividadFiguras(session.db, codigo);
+    final figurasZonas = figuras.where((f) => f.seccion == 'zonas').toList();
+    final figurasProc = figuras.where((f) => f.seccion == 'procedimiento').toList();
+    Widget figura(ActividadFigura f) => FiguraVmi(
+          key: ValueKey('figura-${f.pagina}-${f.y1}'),
+          pdfPath: _vmiPath(detalle),
+          titulo: detalle.codigo,
+          figura: f,
+        );
 
     return Scaffold(
       appBar: AppBar(title: Text(detalle.codigo)),
@@ -115,16 +130,17 @@ class ActividadDetalleScreen extends StatelessWidget {
               Text('Consumibles y repuestos', style: Theme.of(context).textTheme.titleMedium),
               _ListaMateriales(materiales: consumibles),
             ],
-            if (detalle.zonasTrabajo != null) ...[
+            if (detalle.zonasTrabajo != null || figurasZonas.isNotEmpty) ...[
               const SizedBox(height: 16),
               Text('Zona de trabajo', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 4),
-              Text(detalle.zonasTrabajo!),
+              if (detalle.zonasTrabajo != null) Text(detalle.zonasTrabajo!),
+              for (final f in figurasZonas) figura(f),
             ],
-            if (detalle.pasos.isNotEmpty) ...[
+            if (detalle.pasos.isNotEmpty || figurasProc.isNotEmpty) ...[
               const SizedBox(height: 16),
               Text('Procedimiento', style: Theme.of(context).textTheme.titleMedium),
-              _Procedimiento(pasos: detalle.pasos),
+              _Procedimiento(pasos: detalle.pasos, figuras: figurasProc, figura: figura),
             ],
           ],
           if (detalle.seguridad != null) ...[
@@ -213,11 +229,13 @@ class ActividadDetalleScreen extends StatelessWidget {
     );
   }
 
+  String _vmiPath(ActividadDetalle detalle) =>
+      p.join(session.dataDir, 'pdfs', 'vmi', detalle.vmiRelPath!);
+
   void _abrirVmi(BuildContext context, ActividadDetalle detalle) {
-    final path = p.join(session.dataDir, 'pdfs', 'vmi', detalle.vmiRelPath!);
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => PdfViewerScreen(path: path, title: detalle.codigo),
+        builder: (_) => PdfViewerScreen(path: _vmiPath(detalle), title: detalle.codigo),
       ),
     );
   }
@@ -269,15 +287,23 @@ class _ListaMateriales extends StatelessWidget {
 
 class _Procedimiento extends StatelessWidget {
   final List<ActividadPaso> pasos;
-  const _Procedimiento({required this.pasos});
+
+  /// Figuras de la sección 4, cada una justo antes del paso
+  /// `antesPasoOrden` (índice en [pasos]), o al final si es null.
+  final List<ActividadFigura> figuras;
+  final Widget Function(ActividadFigura) figura;
+  const _Procedimiento({required this.pasos, required this.figuras, required this.figura});
 
   @override
   Widget build(BuildContext context) {
-    final porFase = <String, List<ActividadPaso>>{};
-    for (final paso in pasos) {
-      final fase = (paso.fase?.isNotEmpty ?? false) ? paso.fase! : '';
-      porFase.putIfAbsent(fase, () => []).add(paso);
+    // El índice de cada paso en `pasos` es su `orden`, que es a lo que
+    // apunta `antesPasoOrden`.
+    final porFase = <String, List<int>>{};
+    for (var i = 0; i < pasos.length; i++) {
+      final fase = (pasos[i].fase?.isNotEmpty ?? false) ? pasos[i].fase! : '';
+      porFase.putIfAbsent(fase, () => []).add(i);
     }
+    final finales = figuras.where((f) => f.antesPasoOrden == null || f.antesPasoOrden! >= pasos.length);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -286,12 +312,15 @@ class _Procedimiento extends StatelessWidget {
             const SizedBox(height: 8),
             Text(entry.key, style: Theme.of(context).textTheme.titleSmall),
           ],
-          for (final paso in entry.value)
+          for (final i in entry.value) ...[
+            for (final f in figuras.where((f) => f.antesPasoOrden == i)) figura(f),
             Padding(
               padding: const EdgeInsets.only(left: 8, top: 4),
-              child: Text('${paso.n}. ${paso.texto}'),
+              child: Text('${pasos[i].n}. ${pasos[i].texto}'),
             ),
+          ],
         ],
+        for (final f in finales) figura(f),
       ],
     );
   }

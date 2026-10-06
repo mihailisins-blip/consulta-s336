@@ -241,7 +241,9 @@ function parseProcedimiento(lines) {
   let paso = null;
   let callout = null;      // { titulo, texto } en curso
   let seenStepOrPhase = false;
-  const items = lines.map((l) => ({ x: l.x, t: l.text.trim() })).filter((it) => it.t);
+  /** posición de cada paso en el PDF, en el mismo orden plano que `orden` en actividad_paso */
+  const pasosPos = [];
+  const items = lines.map((l) => ({ x: l.x, t: l.text.trim(), page: l.page, y: l.y })).filter((it) => it.t);
 
   const flushCallout = () => {
     if (!callout) return;
@@ -252,7 +254,7 @@ function parseProcedimiento(lines) {
   };
 
   for (let i = 0; i < items.length; i++) {
-    const { x, t } = items[i];
+    const { x, t, page, y } = items[i];
     const next = items[i + 1]?.t ?? '';
     const next2 = items[i + 2]?.t ?? '';
 
@@ -269,6 +271,7 @@ function parseProcedimiento(lines) {
       if (!fase) fase = nuevaFase('');
       paso = { n: Number(stepM[1]), texto: stepM[2].trim(), subpasos: [], notas: [] };
       fase.pasos.push(paso);
+      pasosPos.push({ page, y });
       continue;
     }
     const subM = t.match(reSubstep);
@@ -306,10 +309,136 @@ function parseProcedimiento(lines) {
 
   for (const f of fases) for (const p of f.pasos) p.texto = p.texto.replace(/\s+/g, ' ').trim();
   return {
-    preambulo: preambulo.replace(/\s+/g, ' ').trim() || null,
-    notas: preNotas,
-    fases: fases.filter((f) => f.titulo || f.pasos.length),
+    procedimiento: {
+      preambulo: preambulo.replace(/\s+/g, ' ').trim() || null,
+      notas: preNotas,
+      fases: fases.filter((f) => f.titulo || f.pasos.length),
+    },
+    pasosPos,
   };
+}
+
+// Figuras (secciones 3 y 4). En la plantilla VMI cada figura -- esquema del
+// vehículo, localización del componente, despiece -- ocupa un hueco vertical
+// limpio en el texto y lleva su pie justo debajo ("Esquema del vehículo",
+// "Mitad acoplamiento lado reductora"...), seguido a veces de su leyenda
+// ("002 Cuerpo de acoplamiento ..."). No se extrae la imagen en sí: se
+// guarda la página y el recuadro (en puntos PDF, origen abajo-izquierda) y
+// la app lo recorta del PDF ya copiado a pdfs/. Así da igual que la figura
+// sea un raster o un dibujo vectorial.
+
+/** hueco vertical mínimo (pt) entre dos líneas para considerarlo una figura */
+const FIG_GAP = 80;
+const reLegend = /^\d{1,3}\s+\S/;
+const fy = (l) => l.page * 10000 + (1000 - l.y); // orden de lectura
+
+// Leyenda de una figura: tabla de dos columnas bajo el pie, cada entrada
+// "código  texto" ("002  Cuerpo de acoplamiento", "01  Panel ASFA", "C  Mirilla
+// de nivel de aceite"), con el texto largo partido en líneas de continuación
+// que solo traen texto en la x de su columna ("alarma", "namiento").
+const reCodigoLeyenda = /^(?:\d{1,3}|[A-Z])$/;
+/** separación vertical máxima (pt) entre dos líneas de una misma leyenda */
+const LEYENDA_GAP = 25;
+
+/**
+ * @param {PdfLine[]} pl  líneas de la página, y descendente
+ * @param {number} desde  índice de la primera línea candidata
+ * @returns {{entradas:{codigo:string,texto:string}[], usadas:PdfLine[]}}
+ */
+function parseLeyenda(pl, desde) {
+  const entradas = [];
+  const usadas = [];
+  /** x de la columna de texto -> última entrada abierta en ella */
+  const abiertas = new Map();
+  const colDe = (x) => [...abiertas.keys()].find((cx) => Math.abs(cx - x) <= 3);
+  for (let k = desde; k < pl.length; k++) {
+    const l = pl[k];
+    if (k > desde && pl[k - 1].y - l.y > LEYENDA_GAP) break;
+    if (reFooter.test(l.text)) break;
+    const spans = l.spans.filter((sp) => sp.text.trim());
+    const nuevas = [];
+    let continua = spans.length > 0;
+    for (let s = 0; s < spans.length; s++) {
+      const sp = spans[s];
+      const sig = spans[s + 1];
+      if (reCodigoLeyenda.test(sp.text.trim()) && sig && !reCodigoLeyenda.test(sig.text.trim())) {
+        nuevas.push({ codigo: sp.text.trim(), texto: sig.text.trim(), x: sig.x });
+        s++;
+      } else if (colDe(sp.x) === undefined) {
+        continua = false;
+      }
+    }
+    if (nuevas.length) {
+      for (const n of nuevas) {
+        const e = { codigo: n.codigo, texto: n.texto };
+        entradas.push(e);
+        const cx = colDe(n.x);
+        if (cx !== undefined) abiertas.delete(cx);
+        abiertas.set(n.x, e);
+      }
+    } else if (continua && entradas.length) {
+      for (const sp of spans) {
+        const e = abiertas.get(colDe(sp.x));
+        const t = sp.text.trim();
+        e.texto = e.texto.endsWith('-') ? e.texto.slice(0, -1) + t : `${e.texto} ${t}`;
+      }
+    } else {
+      break;
+    }
+    usadas.push(l);
+  }
+  return { entradas, usadas };
+}
+
+/**
+ * @param {PdfLine[]} raw    líneas sin limpiar (con cabecera y pie de página: acotan el hueco)
+ * @param {{page:number,y:number}} desde  inicio de la sección 3
+ * @param {{page:number,y:number}|null} hasta  inicio de la sección 5/6 (o null)
+ * @param {{page:number,y:number}|null} inicioS4
+ * @returns {any[]}  figuras, cada una con `_lineas` (pie, fragmentos y leyenda:
+ *   no son texto del procedimiento); `antesDePaso` se rellena después
+ */
+function detectFiguras(raw, desde, hasta, inicioS4) {
+  const out = [];
+  const pages = [...new Set(raw.map((l) => l.page))].sort((a, b) => a - b);
+  for (const pn of pages) {
+    const pl = raw.filter((l) => l.page === pn).sort((a, b) => b.y - a.y);
+    for (let i = 0; i + 1 < pl.length; i++) {
+      const top = pl[i];
+      if (fy(top) < fy(desde)) continue;
+      if (hasta && fy(top) >= fy(hasta)) break;
+      if (top.y - pl[i + 1].y <= FIG_GAP) continue;
+      // el pie es la primera línea tras el hueco; un fragmento suelto ("re",
+      // una cota) es texto dentro de la propia figura, y el pie va después.
+      let j = i + 1;
+      while (j + 1 < pl.length && pl[j].text.trim().length < 4) j++;
+      const pie = pl[j];
+      if (reFooter.test(pie.text)) continue; // blanco al final de página, no una figura
+      const y0 = pie.y + 12; // por encima de la línea base del pie
+      // por debajo de los descendentes de la línea anterior; si esa línea es
+      // la cabecera repetida de página (y>=785, como en cleanLines), por
+      // debajo de la franja de cabecera.
+      const y1 = top.y >= 785 ? 781 : top.y - 4;
+      if (y1 - y0 < FIG_GAP / 2) continue;
+      const pos = fy({ page: pn, y: (y0 + y1) / 2 });
+      const seccion = inicioS4 && pos > fy(inicioS4) ? 'procedimiento' : 'zonas';
+      // sin pie propio, la primera línea tras el hueco es ya la leyenda ("1 Reductora 2 ...")
+      const sinPie = reLegend.test(pie.text) || /^[A-Z]\s+\S/.test(pie.text);
+      const leyenda = parseLeyenda(pl, sinPie ? j : j + 1);
+      out.push({
+        pagina: pn,
+        y0,
+        y1,
+        pie: sinPie && leyenda.entradas.length ? null : pie.text.trim(),
+        seccion,
+        antesDePaso: null,
+        leyenda: leyenda.entradas,
+        _pos: pos,
+        _lineas: [...pl.slice(i + 1, j + 1), ...leyenda.usadas],
+      });
+    }
+  }
+  return out;
 }
 
 /**
@@ -348,6 +477,7 @@ export function parseVmi(rawLines, { codigo }) {
     zonasTrabajo: null,
     seguridad: null,
     procedimiento: { preambulo: null, fases: [] },
+    figuras: [],
     sinExtraer: false,
     motivo: null,
   };
@@ -396,9 +526,25 @@ export function parseVmi(rawLines, { codigo }) {
     record[key] = parseSubTable(s2.slice(start + 1, nextStart));
   }
 
+  // Figuras de las secciones 3 y 4, antes que el texto de esas secciones:
+  // sus pies y leyendas se quitan del texto (si no, acaban pegados al paso
+  // anterior: "4. ... referenciado. re 1 Reductora 2 Mirilla de nivel aceite").
+  let figuras = [];
+  if (sections[3] !== undefined) {
+    const fin = sections[5] ?? sections[6];
+    figuras = detectFiguras(
+      rawLines,
+      lines[sections[3]],
+      fin !== undefined ? lines[fin] : null,
+      sections[4] !== undefined ? lines[sections[4]] : null,
+    );
+  }
+  const deFigura = new Set(figuras.flatMap((f) => f._lineas));
+  const leyendas = new Set(figuras.flatMap((f) => f._lineas.filter((l) => !(f.pie && l.text.trim() === f.pie))));
+
   // Sección 3
   if (sections[3] !== undefined) {
-    const s3 = lines.slice(sections[3] + 1, endOf(3));
+    const s3 = lines.slice(sections[3] + 1, endOf(3)).filter((l) => !leyendas.has(l));
     const txt = s3
       .filter((l) => l.x < 130 && l.text.trim().length > 3 && !/^\d+\s/.test(l.text))
       .map((l) => l.text.trim());
@@ -406,10 +552,17 @@ export function parseVmi(rawLines, { codigo }) {
   }
 
   // Sección 4
+  let pasosPos = [];
   if (sections[4] !== undefined) {
-    const s4 = lines.slice(sections[4] + 1, endOf(4));
-    record.procedimiento = parseProcedimiento(s4);
+    const s4 = lines.slice(sections[4] + 1, endOf(4)).filter((l) => !deFigura.has(l));
+    ({ procedimiento: record.procedimiento, pasosPos } = parseProcedimiento(s4));
   }
+
+  record.figuras = figuras.map(({ _pos, _lineas, ...f }) => {
+    if (f.seccion !== 'procedimiento') return f;
+    const antes = pasosPos.findIndex((p) => fy(p) > _pos);
+    return { ...f, antesDePaso: antes >= 0 ? antes : null };
+  });
 
   return record;
 }

@@ -70,6 +70,15 @@ test('writeDatabase: data.sqlite abre y la búsqueda FTS devuelve la actividad',
   // procedimiento y materiales poblados
   assert.ok(db.prepare('SELECT count(*) c FROM actividad_paso WHERE actividad_codigo = ?').get('FD5.02.04').c >= 10);
   assert.ok(db.prepare('SELECT count(*) c FROM actividad_material').get().c >= 5);
+  // figuras: zonas de trabajo y procedimiento, con su paso de referencia
+  const figs = db.prepare('SELECT * FROM actividad_figura WHERE actividad_codigo = ? ORDER BY orden').all('FD5.02.04');
+  assert.ok(figs.some((f) => f.seccion === 'zonas' && f.pie === 'Esquema del vehículo'));
+  const anillo = figs.find((f) => f.pie === 'Anillo de empuje');
+  assert.equal(
+    db.prepare('SELECT paso_n FROM actividad_paso WHERE actividad_codigo = ? AND orden = ?')
+      .get('FD5.02.04', anillo.antes_paso_orden).paso_n,
+    10,
+  );
   assert.equal(db.prepare('SELECT revisado FROM ficha_sistema WHERE sistema_codigo = ?').get('FD5').revisado, 0);
 
   // actividad_lote: FD5.01.01 es una actividad real de este build (tiene

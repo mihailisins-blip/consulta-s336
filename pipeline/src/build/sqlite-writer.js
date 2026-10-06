@@ -60,6 +60,20 @@ CREATE TABLE actividad_paso (
   actividad_codigo TEXT, orden INTEGER, fase TEXT, paso_n INTEGER, texto TEXT
 );
 
+-- Figuras del VMI (esquema v5): recuadro en puntos PDF (origen abajo-izquierda)
+-- de cada figura de las secciones 3 (seccion='zonas') y 4 ('procedimiento')
+-- dentro del VMI copiado a pdfs/. La app lo recorta del PDF al mostrarlo.
+-- x0/x1 NULL = todo el ancho de la página. antes_paso_orden = orden (actividad_paso) del
+-- primer paso que va después de la figura (NULL: tras el último paso).
+CREATE TABLE actividad_figura (
+  actividad_codigo TEXT, orden INTEGER, seccion TEXT, antes_paso_orden INTEGER,
+  pagina INTEGER, x0 REAL, y0 REAL, x1 REAL, y1 REAL, pie TEXT
+);
+-- Leyenda de cada figura (la tabla "código / elemento" bajo el pie).
+CREATE TABLE actividad_figura_leyenda (
+  actividad_codigo TEXT, figura_orden INTEGER, orden INTEGER, codigo TEXT, texto TEXT
+);
+
 CREATE TABLE catalogo (
   id TEXT PRIMARY KEY, codigo_erp TEXT, descripcion TEXT, fabricante TEXT,
   referencia TEXT, unidad TEXT, tipo TEXT, fuente TEXT
@@ -100,6 +114,8 @@ CREATE INDEX ix_actnivel ON actividad_nivel(nivel_codigo);
 CREATE INDEX ix_actmat_act ON actividad_material(actividad_codigo);
 CREATE INDEX ix_actmat_cat ON actividad_material(catalogo_id);
 CREATE INDEX ix_paso_act ON actividad_paso(actividad_codigo);
+CREATE INDEX ix_figura_act ON actividad_figura(actividad_codigo);
+CREATE INDEX ix_leyenda_act ON actividad_figura_leyenda(actividad_codigo);
 
 CREATE VIRTUAL TABLE busqueda USING fts5(
   tipo UNINDEXED, ref UNINDEXED, titulo, cuerpo,
@@ -182,6 +198,8 @@ function writeAll(db, { plan, materiales, model, catalog, join, vmiByCode, meta 
      seguridad,fuente_vmi,fuente_plan,fuente_materiales)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
   const insPaso = db.prepare('INSERT INTO actividad_paso VALUES (?,?,?,?,?)');
+  const insFig = db.prepare('INSERT INTO actividad_figura VALUES (?,?,?,?,?,?,?,?,?,?)');
+  const insLey = db.prepare('INSERT INTO actividad_figura_leyenda VALUES (?,?,?,?,?)');
   const insActNivel = db.prepare('INSERT INTO actividad_nivel VALUES (?,?)');
   for (const a of join.actividades) {
     const rec = vmiByCode.get(a.codigo) ?? {};
@@ -199,6 +217,10 @@ function writeAll(db, { plan, materiales, model, catalog, join, vmiByCode, meta 
     for (const fase of rec.procedimiento?.fases ?? []) {
       for (const p of fase.pasos) insPaso.run(a.codigo, orden++, fase.titulo || null, p.n, p.texto);
     }
+    (rec.figuras ?? []).forEach((f, i) => {
+      insFig.run(a.codigo, i, f.seccion, f.antesDePaso ?? null, f.pagina, null, f.y0, null, f.y1, f.pie ?? null);
+      (f.leyenda ?? []).forEach((e, k) => insLey.run(a.codigo, i, k, e.codigo, e.texto));
+    });
   }
 
   // --- pertenencia a niveles RDH1..RDH7 (R9/R10/R12/AE3) ---

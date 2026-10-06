@@ -14,7 +14,7 @@ import { normalizarCodigo } from '../model/codes.js';
 import { writeDatabase } from './sqlite-writer.js';
 import { carryOverridesAndDiff } from './diff.js';
 import { selectAndCopyPdfs, esVmiIndividual } from './pdf-select-copy.js';
-import { writeManifest, readManifest, SCHEMA_VERSION } from './manifest.js';
+import { writeManifest, readManifest, SCHEMA_VERSION, PREV_SCHEMAS_COMPATIBLES } from './manifest.js';
 
 /**
  * Registra los errores de recorrido de un subárbol (p. ej. un permiso
@@ -84,7 +84,7 @@ export async function runBuild({ cfg, prevDir = null, conToc = false, log = () =
   // en silencio -- justo lo que KTD7 existe para evitar. Se aborta pronto en
   // vez de arriesgar esa garantía.
   const prevManifest = prevDir ? await readManifest(prevDir) : null;
-  if (prevDir && prevManifest && prevManifest.schema_version !== SCHEMA_VERSION) {
+  if (prevDir && prevManifest && !PREV_SCHEMAS_COMPATIBLES.has(prevManifest.schema_version)) {
     throw new Error(
       `La carpeta anterior (--prev ${prevDir}) tiene esquema v${prevManifest.schema_version}, pero esta ` +
       `CLI escribe v${SCHEMA_VERSION}. Re-extraer con --prev entre versiones de esquema distintas no está ` +

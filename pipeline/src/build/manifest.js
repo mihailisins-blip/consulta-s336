@@ -19,7 +19,17 @@ import path from 'node:path';
 // tiempo de ejecución -- pero una carpeta anterior tampoco la tiene, así
 // que abrirla con la app nueva rompería igual (KTD3): sigue exigiendo el
 // mismo bump de versión que cualquier cambio de forma del esquema.
-export const SCHEMA_VERSION = 4;
+// v5 (2026-10-04): añade `actividad_figura` (recuadros de las figuras de las
+// secciones 3 y 4 del VMI, que la app recorta del PDF) y
+// `actividad_figura_leyenda` (la tabla de elementos bajo cada figura).
+// Re-extraer para que las actividades muestren sus imágenes.
+export const SCHEMA_VERSION = 5;
+
+// Esquemas anteriores contra los que se puede re-extraer con --prev sin
+// riesgo: solo cuando el cambio de versión no toca ninguna tabla que lea
+// build/diff.js (overrides, ficha_sistema, actividad, actividad_material,
+// actividad_lote, catalogo, sistema). v4 -> v5 solo añade actividad_figura y actividad_figura_leyenda.
+export const PREV_SCHEMAS_COMPATIBLES = new Set([SCHEMA_VERSION, 4]);
 
 /**
  * @param {string} outDir
