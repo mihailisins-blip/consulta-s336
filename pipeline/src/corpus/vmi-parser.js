@@ -332,14 +332,73 @@ const FIG_GAP = 80;
 const reLegend = /^\d{1,3}\s+\S/;
 const fy = (l) => l.page * 10000 + (1000 - l.y); // orden de lectura
 
+// Leyenda de una figura: tabla de dos columnas bajo el pie, cada entrada
+// "código  texto" ("002  Cuerpo de acoplamiento", "01  Panel ASFA", "C  Mirilla
+// de nivel de aceite"), con el texto largo partido en líneas de continuación
+// que solo traen texto en la x de su columna ("alarma", "namiento").
+const reCodigoLeyenda = /^(?:\d{1,3}|[A-Z])$/;
+/** separación vertical máxima (pt) entre dos líneas de una misma leyenda */
+const LEYENDA_GAP = 25;
+
+/**
+ * @param {PdfLine[]} pl  líneas de la página, y descendente
+ * @param {number} desde  índice de la primera línea candidata
+ * @returns {{entradas:{codigo:string,texto:string}[], usadas:PdfLine[]}}
+ */
+function parseLeyenda(pl, desde) {
+  const entradas = [];
+  const usadas = [];
+  /** x de la columna de texto -> última entrada abierta en ella */
+  const abiertas = new Map();
+  const colDe = (x) => [...abiertas.keys()].find((cx) => Math.abs(cx - x) <= 3);
+  for (let k = desde; k < pl.length; k++) {
+    const l = pl[k];
+    if (k > desde && pl[k - 1].y - l.y > LEYENDA_GAP) break;
+    if (reFooter.test(l.text)) break;
+    const spans = l.spans.filter((sp) => sp.text.trim());
+    const nuevas = [];
+    let continua = spans.length > 0;
+    for (let s = 0; s < spans.length; s++) {
+      const sp = spans[s];
+      const sig = spans[s + 1];
+      if (reCodigoLeyenda.test(sp.text.trim()) && sig && !reCodigoLeyenda.test(sig.text.trim())) {
+        nuevas.push({ codigo: sp.text.trim(), texto: sig.text.trim(), x: sig.x });
+        s++;
+      } else if (colDe(sp.x) === undefined) {
+        continua = false;
+      }
+    }
+    if (nuevas.length) {
+      for (const n of nuevas) {
+        const e = { codigo: n.codigo, texto: n.texto };
+        entradas.push(e);
+        const cx = colDe(n.x);
+        if (cx !== undefined) abiertas.delete(cx);
+        abiertas.set(n.x, e);
+      }
+    } else if (continua && entradas.length) {
+      for (const sp of spans) {
+        const e = abiertas.get(colDe(sp.x));
+        const t = sp.text.trim();
+        e.texto = e.texto.endsWith('-') ? e.texto.slice(0, -1) + t : `${e.texto} ${t}`;
+      }
+    } else {
+      break;
+    }
+    usadas.push(l);
+  }
+  return { entradas, usadas };
+}
+
 /**
  * @param {PdfLine[]} raw    líneas sin limpiar (con cabecera y pie de página: acotan el hueco)
  * @param {{page:number,y:number}} desde  inicio de la sección 3
  * @param {{page:number,y:number}|null} hasta  inicio de la sección 5/6 (o null)
  * @param {{page:number,y:number}|null} inicioS4
- * @param {{page:number,y:number}[]} pasosPos
+ * @returns {any[]}  figuras, cada una con `_lineas` (pie, fragmentos y leyenda:
+ *   no son texto del procedimiento); `antesDePaso` se rellena después
  */
-function detectFiguras(raw, desde, hasta, inicioS4, pasosPos) {
+function detectFiguras(raw, desde, hasta, inicioS4) {
   const out = [];
   const pages = [...new Set(raw.map((l) => l.page))].sort((a, b) => a - b);
   for (const pn of pages) {
@@ -363,15 +422,19 @@ function detectFiguras(raw, desde, hasta, inicioS4, pasosPos) {
       if (y1 - y0 < FIG_GAP / 2) continue;
       const pos = fy({ page: pn, y: (y0 + y1) / 2 });
       const seccion = inicioS4 && pos > fy(inicioS4) ? 'procedimiento' : 'zonas';
-      const antes = seccion === 'procedimiento' ? pasosPos.findIndex((p) => fy(p) > pos) : -1;
+      // sin pie propio, la primera línea tras el hueco es ya la leyenda ("1 Reductora 2 ...")
+      const sinPie = reLegend.test(pie.text) || /^[A-Z]\s+\S/.test(pie.text);
+      const leyenda = parseLeyenda(pl, sinPie ? j : j + 1);
       out.push({
         pagina: pn,
         y0,
         y1,
-        // sin pie propio, la primera línea tras el hueco es ya la leyenda ("1 Reductora 2 ...")
-        pie: reLegend.test(pie.text) ? null : pie.text.trim(),
+        pie: sinPie && leyenda.entradas.length ? null : pie.text.trim(),
         seccion,
-        antesDePaso: antes >= 0 ? antes : null,
+        antesDePaso: null,
+        leyenda: leyenda.entradas,
+        _pos: pos,
+        _lineas: [...pl.slice(i + 1, j + 1), ...leyenda.usadas],
       });
     }
   }
@@ -463,9 +526,25 @@ export function parseVmi(rawLines, { codigo }) {
     record[key] = parseSubTable(s2.slice(start + 1, nextStart));
   }
 
+  // Figuras de las secciones 3 y 4, antes que el texto de esas secciones:
+  // sus pies y leyendas se quitan del texto (si no, acaban pegados al paso
+  // anterior: "4. ... referenciado. re 1 Reductora 2 Mirilla de nivel aceite").
+  let figuras = [];
+  if (sections[3] !== undefined) {
+    const fin = sections[5] ?? sections[6];
+    figuras = detectFiguras(
+      rawLines,
+      lines[sections[3]],
+      fin !== undefined ? lines[fin] : null,
+      sections[4] !== undefined ? lines[sections[4]] : null,
+    );
+  }
+  const deFigura = new Set(figuras.flatMap((f) => f._lineas));
+  const leyendas = new Set(figuras.flatMap((f) => f._lineas.filter((l) => !(f.pie && l.text.trim() === f.pie))));
+
   // Sección 3
   if (sections[3] !== undefined) {
-    const s3 = lines.slice(sections[3] + 1, endOf(3));
+    const s3 = lines.slice(sections[3] + 1, endOf(3)).filter((l) => !leyendas.has(l));
     const txt = s3
       .filter((l) => l.x < 130 && l.text.trim().length > 3 && !/^\d+\s/.test(l.text))
       .map((l) => l.text.trim());
@@ -475,20 +554,15 @@ export function parseVmi(rawLines, { codigo }) {
   // Sección 4
   let pasosPos = [];
   if (sections[4] !== undefined) {
-    const s4 = lines.slice(sections[4] + 1, endOf(4));
+    const s4 = lines.slice(sections[4] + 1, endOf(4)).filter((l) => !deFigura.has(l));
     ({ procedimiento: record.procedimiento, pasosPos } = parseProcedimiento(s4));
   }
 
-  if (sections[3] !== undefined) {
-    const fin = sections[5] ?? sections[6];
-    record.figuras = detectFiguras(
-      rawLines,
-      lines[sections[3]],
-      fin !== undefined ? lines[fin] : null,
-      sections[4] !== undefined ? lines[sections[4]] : null,
-      pasosPos,
-    );
-  }
+  record.figuras = figuras.map(({ _pos, _lineas, ...f }) => {
+    if (f.seccion !== 'procedimiento') return f;
+    const antes = pasosPos.findIndex((p) => fy(p) > _pos);
+    return { ...f, antesDePaso: antes >= 0 ? antes : null };
+  });
 
   return record;
 }

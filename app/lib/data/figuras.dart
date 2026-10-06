@@ -5,6 +5,14 @@
 // dibujo vectorial.
 import 'package:sqlite3/sqlite3.dart';
 
+/// Una fila de la leyenda bajo la figura: el número o letra que señala la
+/// figura y el elemento al que corresponde ("002", "Cuerpo de acoplamiento").
+class LeyendaEntrada {
+  final String codigo;
+  final String texto;
+  const LeyendaEntrada({required this.codigo, required this.texto});
+}
+
 class ActividadFigura {
   /// 'zonas' (sección 3 del VMI) o 'procedimiento' (sección 4).
   final String seccion;
@@ -23,6 +31,7 @@ class ActividadFigura {
   final double? x1;
   final double y1;
   final String? pie;
+  final List<LeyendaEntrada> leyenda;
 
   const ActividadFigura({
     required this.seccion,
@@ -33,6 +42,7 @@ class ActividadFigura {
     required this.x1,
     required this.y1,
     required this.pie,
+    this.leyenda = const [],
   });
 }
 
@@ -40,17 +50,33 @@ class ActividadFigura {
 /// datos no tiene la tabla (no debería pasar con el esquema v5 exigido, pero
 /// los fixtures de test más antiguos no la traen).
 List<ActividadFigura> getActividadFiguras(Database db, String codigo) {
-  final hayTabla = db
-      .select("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'actividad_figura'")
-      .isNotEmpty;
-  if (!hayTabla) return const [];
+  bool hayTabla(String nombre) =>
+      db.select("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", [nombre]).isNotEmpty;
+  if (!hayTabla('actividad_figura')) return const [];
   final rows = db.select(
     '''
-    SELECT seccion, antes_paso_orden, pagina, x0, y0, x1, y1, pie
+    SELECT orden, seccion, antes_paso_orden, pagina, x0, y0, x1, y1, pie
     FROM actividad_figura WHERE actividad_codigo = ? ORDER BY orden
     ''',
     [codigo],
   );
+  // La leyenda llegó después que las figuras: una carpeta v5 extraída antes
+  // no la trae, y entonces las figuras se muestran sin ella.
+  final leyendas = <int, List<LeyendaEntrada>>{};
+  if (hayTabla('actividad_figura_leyenda')) {
+    final leyRows = db.select(
+      '''
+      SELECT figura_orden, codigo, texto FROM actividad_figura_leyenda
+      WHERE actividad_codigo = ? ORDER BY figura_orden, orden
+      ''',
+      [codigo],
+    );
+    for (final r in leyRows) {
+      leyendas
+          .putIfAbsent(r['figura_orden'] as int, () => [])
+          .add(LeyendaEntrada(codigo: r['codigo'] as String, texto: r['texto'] as String));
+    }
+  }
   return [
     for (final r in rows)
       ActividadFigura(
@@ -62,6 +88,7 @@ List<ActividadFigura> getActividadFiguras(Database db, String codigo) {
         x1: (r['x1'] as num?)?.toDouble(),
         y1: (r['y1'] as num).toDouble(),
         pie: r['pie'] as String?,
+        leyenda: leyendas[r['orden'] as int] ?? const [],
       ),
   ];
 }

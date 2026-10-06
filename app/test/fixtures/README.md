@@ -30,7 +30,7 @@ mismos 4 VMI reales de `pipeline/test/fixtures/vmi/` y los workbooks de
 `sqlite-writer.js`), pequeño porque no requiere el corpus completo.
 Sí tiene `actividad_lote`, `actividad.seguridad` (FD5.02.04 trae texto real
 de la sección 1 del VMI), `fusion_catalogo` (v4, vacía hasta que un test
-la usa) y `actividad_figura` (v5: las figuras de los 4 VMI, sin los PDF).
+la usa) y `actividad_figura` y `actividad_figura_leyenda` (v5: las figuras de los 4 VMI con sus leyendas, sin los PDF).
 Para regenerarlo tras un cambio de esquema:
 
 ```

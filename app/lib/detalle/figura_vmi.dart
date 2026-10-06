@@ -100,6 +100,7 @@ class _FiguraVmiState extends State<FiguraVmi> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final pie = widget.figura.pie;
+    final leyenda = widget.figura.leyenda;
     final Widget cuerpo;
     if (_image != null) {
       cuerpo = ConstrainedBox(
@@ -130,6 +131,34 @@ class _FiguraVmiState extends State<FiguraVmi> {
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(pie, style: theme.textTheme.bodySmall),
+              ),
+            if (leyenda.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 720),
+                  child: Table(
+                    columnWidths: const {0: IntrinsicColumnWidth(), 1: FlexColumnWidth()},
+                    children: [
+                      for (final e in leyenda)
+                        TableRow(
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(right: 12, bottom: 2),
+                              child: Text(
+                                e.codigo,
+                                style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 2),
+                              child: Text(e.texto, style: theme.textTheme.bodySmall),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
               ),
           ],
         ),

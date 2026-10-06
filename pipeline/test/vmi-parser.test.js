@@ -159,3 +159,31 @@ test('figuras: la cabecera repetida de página no entra en el recuadro; sin pie,
   // la última figura (tras el paso 8) no tiene paso después
   assert.equal(parse('VMI.3770.FD5.01.01').figuras.at(-1).antesDePaso, null);
 });
+
+test('leyendas de figura: tabla de dos columnas con códigos y líneas de continuación', () => {
+  const ra1 = parse('VMI.3770.RA1.01.01').figuras;
+  const pupitre = ra1.find((f) => f.pie === 'Pupitre de conducción');
+  assert.equal(pupitre.leyenda.length, 13);
+  assert.deepEqual(pupitre.leyenda[2], { codigo: '03', texto: 'Panel monitor ETCS y luces de alarma' });
+  assert.deepEqual(pupitre.leyenda[11], { codigo: '12', texto: 'Conmutador antivaho de los cristales frontales' });
+  // guion de fin de línea: "estacio-" + "namiento"
+  const panel = ra1.find((f) => f.pagina === 7);
+  assert.equal(panel.leyenda.find((e) => e.codigo === '07').texto, 'Pulsador de afloje freno de estacionamiento');
+
+  const anillo = parse('VMI.3770.FD5.02.04').figuras.find((f) => f.pie === 'Anillo de empuje');
+  assert.deepEqual(anillo.leyenda.map((e) => e.codigo), ['021', '022', '023', '024', '025', '027', '028']);
+
+  // sin pie: la leyenda empieza justo tras el hueco; código de una letra
+  const fd5 = parse('VMI.3770.FD5.01.01').figuras;
+  assert.deepEqual(fd5.find((f) => f.pagina === 6).leyenda, [
+    { codigo: '1', texto: 'Reductora' }, { codigo: '2', texto: 'Mirilla de nivel aceite' },
+  ]);
+  assert.deepEqual(fd5.at(-1).leyenda, [{ codigo: 'C', texto: 'Mirilla de nivel de aceite' }]);
+});
+
+test('pies y leyendas de figura no se pegan al texto de los pasos ni de la zona de trabajo', () => {
+  const pasos = parse('VMI.3770.FD5.01.01').procedimiento.fases.flatMap((f) => f.pasos);
+  assert.equal(pasos.find((p) => p.n === 4).texto, 'En caso de daños consultar el manual de mantenimiento referenciado.');
+  assert.doesNotMatch(pasos.find((p) => p.n === 8).texto, /Mirilla/);
+  assert.doesNotMatch(parse('VMI.3770.RA1.01.01').zonasTrabajo, /; (alarma|varios)(;|$)/);
+});

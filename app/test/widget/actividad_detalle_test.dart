@@ -225,13 +225,21 @@ void main() {
       expect(find.text('Esquema del vehículo'), findsOneWidget);
       expect(find.text('Localización del acoplamiento'), findsOneWidget);
       expect(find.text('Figura en la página 6 del VMI'), findsNWidgets(2));
-      expect(find.text('Anillo de empuje'), findsOneWidget);
+      // "Anillo de empuje" es pie de una figura y también elemento (022) de
+      // la leyenda de otras tres.
+      expect(find.text('Anillo de empuje'), findsNWidgets(4));
 
-      // "Anillo de empuje" va entre el paso 9 y el 10 del desmontaje
-      final figura = tester.getTopLeft(find.text('Anillo de empuje')).dy;
+      // La figura "Anillo de empuje" (la única cuya leyenda trae el 023) va
+      // entre el paso 9 y el 10 del desmontaje.
+      final figura = tester.getTopLeft(find.text('023')).dy;
       final paso9 = tester.getTopLeft(find.textContaining(RegExp(r'^9\. Retirar el anillo de láminas'))).dy;
       final paso10 = tester.getTopLeft(find.textContaining(RegExp(r'^10\. Quitar los elementos'))).dy;
       expect(paso9 < figura && figura < paso10, true);
+
+      // Leyenda bajo la figura: código y elemento, en filas propias, y ya no
+      // pegada al texto de los pasos.
+      expect(find.text('023'), findsOneWidget);
+      expect(find.text('Espiga cilindrica'), findsOneWidget);
     },
   );
 }
