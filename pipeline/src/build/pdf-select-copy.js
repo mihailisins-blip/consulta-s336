@@ -13,17 +13,29 @@ export function esVmiIndividual(name) {
   return /^VMI\.[0-9]/i.test(name);
 }
 
+/** Vacía y recrea `<outDir>/pdfs/` (las copias de una ejecución anterior no valen). */
+export async function prepararCarpetaPdfs(outDir) {
+  const pdfsDir = path.join(outDir, 'pdfs');
+  await fs.rm(pdfsDir, { recursive: true, force: true });
+  await fs.mkdir(pdfsDir, { recursive: true });
+}
+
 /**
  * @param {object} args
  * @param {Record<string,string>} args.roots  { vmi, manuales, esquemas? } -> ruta absoluta
  * @param {string} args.outDir  carpeta de datos
  * @param {(m:string)=>void} [args.log]
+ * @param {string[]} [args.omitirAreas]  áreas que copia otro (run-build copia los VMI
+ *   desde los mismos bytes con los que los parsea, para leerlos de la red una sola vez)
+ * @param {boolean} [args.limpiar]  false si el llamador ya ejecutó `prepararCarpetaPdfs`
+ * @param {boolean} [args.reanudar]  no recopia los PDF que ya están en destino con el mismo tamaño
  * @returns {Promise<{copiados:number, excluidos:string[], fallidos:string[], bytes:number, porArea:Record<string,{copiados:number,bytes:number}>}>}
  */
-export async function selectAndCopyPdfs({ roots, outDir, log = () => {} }) {
+export async function selectAndCopyPdfs({
+  roots, outDir, log = () => {}, omitirAreas = [], limpiar = true, reanudar = false,
+}) {
   const pdfsDir = path.join(outDir, 'pdfs');
-  await fs.rm(pdfsDir, { recursive: true, force: true });
-  await fs.mkdir(pdfsDir, { recursive: true });
+  if (limpiar) await prepararCarpetaPdfs(outDir);
 
   let copiados = 0;
   let bytes = 0;
@@ -43,7 +55,7 @@ export async function selectAndCopyPdfs({ roots, outDir, log = () => {} }) {
   ];
 
   for (const [area, root, keep] of areas) {
-    if (!root) continue;
+    if (!root || omitirAreas.includes(area)) continue;
     porArea[area] = { copiados: 0, bytes: 0 };
     const { files } = await walkDir(root);
     for (const f of files) {
@@ -53,6 +65,18 @@ export async function selectAndCopyPdfs({ roots, outDir, log = () => {} }) {
         continue;
       }
       try {
+        if (reanudar) {
+          // copia ya hecha por una ejecución interrumpida: mismo tamaño = completa
+          // (copyFile escribe directo en destino; una copia cortada queda más corta)
+          const st = await fs.stat(dest).catch(() => null);
+          if (st && st.size === f.size) {
+            copiados++;
+            bytes += f.size;
+            porArea[area].copiados++;
+            porArea[area].bytes += f.size;
+            continue;
+          }
+        }
         await fs.mkdir(path.dirname(dest), { recursive: true });
         await fs.copyFile(path.join(root, f.relPath), dest);
         copiados++;

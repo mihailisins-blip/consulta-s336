@@ -19,7 +19,7 @@ import { inventory } from './corpus/walk.js';
 
 /** @param {string[]} argv */
 export function parseArgs(argv) {
-  const args = { command: null, config: null, prev: null, dryRun: false, conToc: false, help: false };
+  const args = { command: null, config: null, prev: null, dryRun: false, conToc: false, reanudar: false, help: false };
   const rest = argv.slice();
   if (rest[0] && !rest[0].startsWith('-')) args.command = rest.shift();
   while (rest.length) {
@@ -37,6 +37,9 @@ export function parseArgs(argv) {
         break;
       case '--con-toc':
         args.conToc = true;
+        break;
+      case '--reanudar':
+        args.reanudar = true;
         break;
       case '-h':
       case '--help':
@@ -58,6 +61,10 @@ Opciones:
   --config, -c   Archivo de configuración (obligatorio). Declara 'cdromRoot' y 'outDir'.
   --prev         Carpeta de datos anterior, para la re-extracción con diff (U7).
   --dry-run      Solo inventario; no escribe la carpeta de datos.
+  --reanudar     Continúa una extracción interrumpida en la misma carpeta de datos:
+                 los VMI ya terminados (guardados en <carpeta>/.cache-vmi) y los PDF
+                 ya copiados no se vuelven a leer de la red. Sin este flag la
+                 carpeta de datos se reconstruye desde cero.
   --help, -h     Esta ayuda.
 `;
 
@@ -127,7 +134,9 @@ export async function run(args, log = console.log, errLog = console.error) {
 
   log('\nExtrayendo el corpus...\n');
   const { runBuild } = await import('./build/run-build.js');
-  const res = await runBuild({ cfg, prevDir: args.prev, conToc: args.conToc, log: (m) => log(m) });
+  const res = await runBuild({
+    cfg, prevDir: args.prev, conToc: args.conToc, reanudar: args.reanudar, log: (m) => log(m),
+  });
 
   log(`\nCarpeta de datos v${res.dataFolderVersion} escrita en ${cfg.outDir}`);
   log(`  esquema v${res.schemaVersion}  ·  ${JSON.stringify(res.counts)}`);

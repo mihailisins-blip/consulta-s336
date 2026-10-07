@@ -72,6 +72,23 @@ test('writeDatabase: data.sqlite abre y la búsqueda FTS devuelve la actividad',
   assert.ok(db.prepare('SELECT count(*) c FROM actividad_material').get().c >= 5);
   assert.equal(db.prepare('SELECT revisado FROM ficha_sistema WHERE sistema_codigo = ?').get('FD5').revisado, 0);
 
+  // v6: el procedimiento se guarda completo y tipado (título, subtítulos, pasos,
+  // subpasos, avisos...), en orden de lectura y con `orden` contiguo
+  const tipos = db.prepare('SELECT DISTINCT tipo FROM actividad_paso WHERE actividad_codigo = ?')
+    .all('FD5.02.04').map((r) => r.tipo);
+  for (const t of ['titulo', 'subtitulo', 'paso', 'subpaso', 'aviso']) assert.ok(tipos.includes(t), `falta el tipo ${t}`);
+  const sub = db.prepare("SELECT paso_n, etiqueta FROM actividad_paso WHERE actividad_codigo = ? AND tipo = 'subpaso' ORDER BY orden LIMIT 1")
+    .get('FD5.02.04');
+  assert.equal(sub.etiqueta, 'a');
+  assert.equal(sub.paso_n, null, 'solo los pasos llevan número');
+  const ordenes = db.prepare('SELECT orden FROM actividad_paso WHERE actividad_codigo = ? ORDER BY orden').all('FD5.02.04')
+    .map((r) => r.orden);
+  assert.deepEqual(ordenes, ordenes.map((_, i) => i));
+  const aviso = db.prepare("SELECT etiqueta, texto FROM actividad_paso WHERE actividad_codigo = ? AND tipo = 'aviso' ORDER BY orden LIMIT 1")
+    .get('FD5.02.04');
+  assert.equal(aviso.etiqueta, 'INFORMACIÓN');
+  assert.match(aviso.texto, /^Pares de apriete\n/);
+
   // actividad_lote: FD5.01.01 es una actividad real de este build (tiene
   // VMI) y el fixture de materiales la pone en el lote IM1A (R11/R12/AE3).
   assert.ok(
