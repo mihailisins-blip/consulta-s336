@@ -7,6 +7,8 @@
 // que se componen aquí mismo como `override ?? extraído` (overrides.dart)
 // para que cualquier pantalla que los lea ya reciba el valor compuesto.
 
+import 'dart:convert';
+
 import 'package:sqlite3/sqlite3.dart';
 
 import 'overrides.dart';
@@ -91,11 +93,81 @@ class ActividadesDeNivel {
   });
 }
 
+/// Tipos de elemento del procedimiento de un VMI (`actividad_paso.tipo`).
+enum TipoPaso {
+  /// Título de fase (p. ej. "Limpieza de nivel 1").
+  titulo,
+  subtitulo,
+  paso,
+  subpaso,
+  vineta,
+  parrafo,
+
+  /// Aviso/precaución/nota: `etiqueta` es la clase, `texto` el cuerpo (los
+  /// párrafos separados por salto de línea).
+  aviso;
+
+  static TipoPaso desde(String? s) =>
+      TipoPaso.values.firstWhere((t) => t.name == s, orElse: () => TipoPaso.paso);
+}
+
+/// Un elemento del procedimiento, en orden de lectura (no solo los pasos
+/// numerados: también títulos, viñetas, párrafos y avisos).
 class ActividadPaso {
+  /// Posición del elemento en el procedimiento (0, 1, 2...) -- las figuras
+  /// (`ActividadImagen.antesDePaso`) se colocan justo antes del elemento con
+  /// este orden.
+  final int orden;
+  final TipoPaso tipo;
   final String? fase;
-  final int n;
+
+  /// Número del paso (solo `TipoPaso.paso`).
+  final int? n;
+
+  /// Letra del subpaso o clase del aviso.
+  final String? etiqueta;
   final String texto;
-  const ActividadPaso({required this.fase, required this.n, required this.texto});
+  const ActividadPaso({
+    required this.orden,
+    this.tipo = TipoPaso.paso,
+    required this.fase,
+    this.n,
+    this.etiqueta,
+    required this.texto,
+  });
+}
+
+/// Un componente numerado de la leyenda de una figura ("01 Amortiguador
+/// vertical primario").
+class LeyendaItem {
+  final String n;
+  final String nombre;
+  const LeyendaItem({required this.n, required this.nombre});
+}
+
+/// Figura de un VMI (secciones 3 y 4): imagen ya reducida, en
+/// `<dataDir>/imagenes/<archivo>`, con su pie y la leyenda de componentes.
+class ActividadImagen {
+  /// 'zonas' (esquema del vehículo / localización) | 'procedimiento'.
+  final String seccion;
+  final String archivo;
+  final int? ancho;
+  final int? alto;
+  final String? titulo;
+  final List<LeyendaItem> leyenda;
+
+  /// Solo en 'procedimiento': orden del primer elemento que sigue a la figura
+  /// (la figura se dibuja antes). Igual al número de elementos si va al final.
+  final int? antesDePaso;
+  const ActividadImagen({
+    required this.seccion,
+    required this.archivo,
+    required this.ancho,
+    required this.alto,
+    required this.titulo,
+    required this.leyenda,
+    required this.antesDePaso,
+  });
 }
 
 /// Fila de la tabla de herramientas/consumibles/repuestos del detalle
@@ -146,6 +218,9 @@ class ActividadDetalle {
   final List<ActividadPaso> pasos;
   final List<ActividadMaterial> materiales;
 
+  /// Figuras de las zonas de trabajo y del procedimiento, en orden de lectura.
+  final List<ActividadImagen> imagenes;
+
   /// Campos reservados para el futuro simulador de tiempos (R7): sin
   /// lógica asociada en este plan, solo editables por el curador
   /// (`override ?? extraído`) -- la UI de técnico no los muestra (R18).
@@ -169,6 +244,7 @@ class ActividadDetalle {
     required this.niveles,
     required this.pasos,
     required this.materiales,
+    required this.imagenes,
     required this.duracion,
     required this.zona,
   });
@@ -382,6 +458,23 @@ Map<String, String> sistemasDe(Database db, List<String> codigos) {
   };
 }
 
+/// Descripción corta de cada actividad de [codigos] (operación del VMI, o
+/// la del plan si la actividad no tiene VMI vinculado) -- para mostrar
+/// junto al código en listados agrupados, sin tener que cargar el detalle
+/// completo (getActividadDetalle) de cada una.
+Map<String, String?> descripcionesDe(Database db, List<String> codigos) {
+  if (codigos.isEmpty) return const {};
+  final placeholders = List.filled(codigos.length, '?').join(',');
+  final rows = db.select(
+    'SELECT codigo, operacion, descripcion_plan FROM actividad WHERE codigo IN ($placeholders)',
+    codigos,
+  );
+  return {
+    for (final r in rows)
+      r['codigo'] as String: (r['operacion'] as String?) ?? (r['descripcion_plan'] as String?),
+  };
+}
+
 /// Programa ('km' | 'horas' | 'ns') de un nivel de ciclo, o null si el
 /// código no existe -- para deep-linkear a "por ciclo" desde un nivel
 /// concreto sin que el llamador tenga que adivinar a qué programa pertenece.
@@ -409,15 +502,36 @@ ActividadDetalle? getActividadDetalle(Database db, String codigo) {
   final niveles = [for (final nr in nivelRows) nr['nivel_codigo'] as String];
 
   final pasoRows = db.select(
-    'SELECT fase, paso_n, texto FROM actividad_paso WHERE actividad_codigo = ? ORDER BY orden',
+    'SELECT orden, fase, paso_n, texto, tipo, etiqueta FROM actividad_paso WHERE actividad_codigo = ? ORDER BY orden',
     [codigo],
   );
   final pasos = [
     for (final pr in pasoRows)
       ActividadPaso(
+        orden: pr['orden'] as int,
+        tipo: TipoPaso.desde(pr['tipo'] as String?),
         fase: pr['fase'] as String?,
-        n: pr['paso_n'] as int,
+        n: pr['paso_n'] as int?,
+        etiqueta: pr['etiqueta'] as String?,
         texto: pr['texto'] as String,
+      ),
+  ];
+
+  final imagenRows = db.select(
+    'SELECT seccion, archivo, ancho, alto, titulo, leyenda, antes_de_paso '
+    'FROM actividad_imagen WHERE actividad_codigo = ? ORDER BY orden',
+    [codigo],
+  );
+  final imagenes = [
+    for (final ir in imagenRows)
+      ActividadImagen(
+        seccion: ir['seccion'] as String,
+        archivo: ir['archivo'] as String,
+        ancho: ir['ancho'] as int?,
+        alto: ir['alto'] as int?,
+        titulo: ir['titulo'] as String?,
+        leyenda: _leyendaDeJson(ir['leyenda'] as String?),
+        antesDePaso: ir['antes_de_paso'] as int?,
       ),
   ];
 
@@ -461,9 +575,25 @@ ActividadDetalle? getActividadDetalle(Database db, String codigo) {
     niveles: niveles,
     pasos: pasos,
     materiales: materiales,
+    imagenes: imagenes,
     duracion: overrideValor(db, 'actividad', codigo, 'duracion') ?? r['duracion'] as String?,
     zona: overrideValor(db, 'actividad', codigo, 'zona') ?? r['zona'] as String?,
   );
+}
+
+/// Leyenda de una figura guardada como JSON `[{"n":"01","nombre":"..."}]`;
+/// vacía si no hay o no se puede leer (la figura se muestra igual, sin tabla).
+List<LeyendaItem> _leyendaDeJson(String? json) {
+  if (json == null || json.isEmpty) return const [];
+  try {
+    final lista = jsonDecode(json) as List;
+    return [
+      for (final e in lista)
+        LeyendaItem(n: (e as Map)['n'] as String, nombre: e['nombre'] as String),
+    ];
+  } catch (_) {
+    return const [];
+  }
 }
 
 /// Índice de secciones de un manual (R16/KTD8): vacío si el PDF no traía

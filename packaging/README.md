@@ -23,8 +23,12 @@ cd pipeline
 node --experimental-sqlite src/index.js build --config <ruta-a-tu-config.json>
 ```
 
-Esto produce una carpeta con `manifest.json`, `data.sqlite` y `pdfs/`
-(KTD3). El `manifest.json` ya trae `schema_version` (debe coincidir con
+Esto produce una carpeta con `manifest.json`, `data.sqlite`, `pdfs/` y
+`imagenes/` (KTD3; esta última, desde el esquema v5: las figuras de zonas de
+trabajo y procedimiento de cada VMI, reducidas a 1000 px en JPEG, con
+nombre por contenido -- una imagen repetida entre VMI se guarda una sola
+vez). La extracción de figuras necesita `sharp` (`npm install` en
+`pipeline/`). El `manifest.json` ya trae `schema_version` (debe coincidir con
 `kExpectedSchemaVersion` de `app/lib/data/data_folder.dart` — R25/AE6) y
 `data_folder_version`, que se incrementa solo si pasas `--prev <carpeta
 anterior>` para una re-extracción no destructiva (R21/KTD7).

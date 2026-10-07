@@ -19,7 +19,17 @@ import path from 'node:path';
 // tiempo de ejecución -- pero una carpeta anterior tampoco la tiene, así
 // que abrirla con la app nueva rompería igual (KTD3): sigue exigiendo el
 // mismo bump de versión que cualquier cambio de forma del esquema.
-export const SCHEMA_VERSION = 4;
+// v5 (2026-10-06): añade `actividad_imagen` (figuras de las secciones 3 y 4
+// de cada VMI -- esquema del vehículo con las zonas de trabajo, y las
+// figuras del procedimiento con su leyenda de componentes), más la carpeta
+// `imagenes/` junto a data.sqlite. Una carpeta v4 no tiene ni la tabla ni
+// las imágenes; hay que re-extraer (y sin --prev: run-build.js lo rechaza
+// entre esquemas distintos).
+// v6 (2026-10-07): `actividad_paso` pasa de "solo pasos numerados" a la lista
+// completa del procedimiento (títulos de fase, subtítulos, pasos, subpasos,
+// viñetas, párrafos y avisos), con las columnas `tipo` y `etiqueta`; antes el
+// texto que no era un paso se pegaba al paso anterior. Re-extraer, sin --prev.
+export const SCHEMA_VERSION = 6;
 
 /**
  * @param {string} outDir

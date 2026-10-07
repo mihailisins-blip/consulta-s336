@@ -179,6 +179,13 @@ class _NivelContent extends StatelessWidget {
   }
 }
 
+// Anchos de columna compartidos entre la cabecera y cada fila (mismo
+// criterio que hub/por_sistema_screen.dart): así el código de sistema y el
+// código de actividad salen del mismo tamaño en todas las filas, y todo
+// queda alineado en columna en vez de un Wrap de cajas de ancho variable.
+const double _colSistema = 56;
+const double _colActividad = 100;
+
 class _AgrupadoPorSistemaView extends StatelessWidget {
   final AppSession session;
   final List<String> codigos;
@@ -190,32 +197,106 @@ class _AgrupadoPorSistemaView extends StatelessWidget {
       return const Center(child: Text('Ninguna actividad en este nivel.'));
     }
     final sistemaDe = sistemasDe(session.db, codigos);
+    final descripcionDe = descripcionesDe(session.db, codigos);
     final porSistema = <String, List<String>>{};
     for (final c in codigos) {
       porSistema.putIfAbsent(sistemaDe[c] ?? '(sin sistema)', () => []).add(c);
     }
     final sistemasOrdenados = porSistema.keys.toList()..sort();
+    final scheme = Theme.of(context).colorScheme;
+    final estiloCabecera = Theme.of(
+      context,
+    ).textTheme.labelMedium?.copyWith(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w600);
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
+    return Column(
       children: [
-        for (final sis in sistemasOrdenados)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 8,
-              children: [
-                Chip(label: Text(sis)),
-                ...porSistema[sis]!.map(
-                  (c) => ActionChip(
-                    label: Text(c),
-                    onPressed: () => _abrirActividad(context, session, c),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Row(
+            children: [
+              SizedBox(width: _colSistema, child: Text('Sistema', style: estiloCabecera)),
+              const SizedBox(width: 12),
+              SizedBox(width: _colActividad, child: Text('Actividad', style: estiloCabecera)),
+              const SizedBox(width: 10),
+              Expanded(child: Text('Descripción', style: estiloCabecera)),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              for (final sis in sistemasOrdenados)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: _colSistema,
+                        child: Container(
+                          height: 28,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: scheme.secondaryContainer,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            sis,
+                            style: TextStyle(fontSize: 12, color: scheme.onSecondaryContainer),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            for (final c in porSistema[sis]!) ...[
+                              InkWell(
+                                onTap: () => _abrirActividad(context, session, c),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    SizedBox(
+                                      width: _colActividad,
+                                      child: Container(
+                                        height: 28,
+                                        alignment: Alignment.center,
+                                        decoration: BoxDecoration(
+                                          border: Border.all(color: scheme.outlineVariant),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(c, style: const TextStyle(fontSize: 12)),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Padding(
+                                        padding: const EdgeInsets.only(top: 5),
+                                        child: Text(
+                                          descripcionDe[c] ?? '',
+                                          style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
+            ],
           ),
+        ),
       ],
     );
   }

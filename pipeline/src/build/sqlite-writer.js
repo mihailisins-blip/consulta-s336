@@ -56,8 +56,13 @@ CREATE TABLE actividad (
   zona TEXT,              -- R7: idem; la zona operativa "de simulación", distinta de zonas_trabajo del VMI
   fuente_vmi INTEGER, fuente_plan INTEGER, fuente_materiales INTEGER
 );
+-- Procedimiento del VMI como lista plana en orden de lectura (v6). \`tipo\`:
+-- titulo (fase) | subtitulo | paso (paso_n) | subpaso (etiqueta = letra) |
+-- vineta | parrafo | aviso (etiqueta = AVISO, PRECAUCIÓN...; los párrafos del
+-- aviso van separados por \\n). \`fase\` es el título vigente.
 CREATE TABLE actividad_paso (
-  actividad_codigo TEXT, orden INTEGER, fase TEXT, paso_n INTEGER, texto TEXT
+  actividad_codigo TEXT, orden INTEGER, fase TEXT, paso_n INTEGER, texto TEXT,
+  tipo TEXT NOT NULL DEFAULT 'paso', etiqueta TEXT
 );
 
 CREATE TABLE catalogo (
@@ -94,6 +99,19 @@ CREATE TABLE fusion_catalogo (
   superviviente_id TEXT, perdedor_id TEXT, perdedor_json TEXT,
   fecha TEXT, deshecha INTEGER DEFAULT 0
 );
+
+-- Figuras de las secciones 3 (zonas de trabajo) y 4 (procedimiento) de cada
+-- VMI -- v5. \`archivo\` es relativo a <carpeta de datos>/imagenes/ (nombre =
+-- hash del contenido: una imagen repetida se guarda una sola vez). \`leyenda\`
+-- es JSON [{n,nombre}] con los componentes numerados de la figura; en el
+-- procedimiento, \`antes_de_paso\` es el \`orden\` (actividad_paso) del primer
+-- elemento (de cualquier tipo) que sigue a la figura -- se dibuja justo antes.
+CREATE TABLE actividad_imagen (
+  actividad_codigo TEXT, seccion TEXT, orden INTEGER,
+  archivo TEXT, ancho INTEGER, alto INTEGER,
+  titulo TEXT, leyenda TEXT, antes_de_paso INTEGER
+);
+CREATE INDEX ix_imagen_act ON actividad_imagen(actividad_codigo);
 
 CREATE INDEX ix_actividad_sistema ON actividad(sistema_codigo);
 CREATE INDEX ix_actnivel ON actividad_nivel(nivel_codigo);
@@ -181,7 +199,10 @@ function writeAll(db, { plan, materiales, model, catalog, join, vmiByCode, meta 
      operacion,frecuencia,edicion,fecha,descripcion_plan,marca_seguridad,observaciones_plan,zonas_trabajo,
      seguridad,fuente_vmi,fuente_plan,fuente_materiales)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
-  const insPaso = db.prepare('INSERT INTO actividad_paso VALUES (?,?,?,?,?)');
+  const insPaso = db.prepare(
+    'INSERT INTO actividad_paso (actividad_codigo,orden,fase,paso_n,texto,tipo,etiqueta) VALUES (?,?,?,?,?,?,?)',
+  );
+  const insImagen = db.prepare('INSERT INTO actividad_imagen VALUES (?,?,?,?,?,?,?,?,?)');
   const insActNivel = db.prepare('INSERT INTO actividad_nivel VALUES (?,?)');
   for (const a of join.actividades) {
     const rec = vmiByCode.get(a.codigo) ?? {};
@@ -195,9 +216,14 @@ function writeAll(db, { plan, materiales, model, catalog, join, vmiByCode, meta 
       a.fuentes.vmi ? 1 : 0, a.fuentes.plan ? 1 : 0, a.fuentes.materiales ? 1 : 0,
     );
     for (const nivel of a.ciclos ?? []) insActNivel.run(a.codigo, nivel);
-    let orden = 0;
-    for (const fase of rec.procedimiento?.fases ?? []) {
-      for (const p of fase.pasos) insPaso.run(a.codigo, orden++, fase.titulo || null, p.n, p.texto);
+    (rec.procedimiento?.items ?? []).forEach((it, orden) => {
+      insPaso.run(a.codigo, orden, it.fase ?? null, it.n ?? null, it.texto, it.tipo, it.etiqueta ?? null);
+    });
+    for (const f of rec.figuras ?? []) {
+      insImagen.run(
+        a.codigo, f.seccion, f.orden, f.archivo, f.ancho ?? null, f.alto ?? null,
+        f.titulo ?? null, f.leyenda ? JSON.stringify(f.leyenda) : null, f.antesDePaso ?? null,
+      );
     }
   }
 
@@ -246,7 +272,7 @@ function writeAll(db, { plan, materiales, model, catalog, join, vmiByCode, meta 
   const insFts = db.prepare('INSERT INTO busqueda (tipo,ref,titulo,cuerpo) VALUES (?,?,?,?)');
   for (const a of join.actividades) {
     const rec = vmiByCode.get(a.codigo) ?? {};
-    const pasos = (rec.procedimiento?.fases ?? []).flatMap((f) => f.pasos.map((p) => p.texto)).join(' ');
+    const pasos = (rec.procedimiento?.items ?? []).map((it) => it.texto.replace(/\n/g, ' ')).join(' ');
     const cuerpo = [a.descripcionPlan, a.operacion, a.componente, rec.zonasTrabajo, pasos]
       .filter(Boolean).join(' — ');
     insFts.run('actividad', a.codigo, a.descripcionPlan || a.operacion || a.codigo, cuerpo);

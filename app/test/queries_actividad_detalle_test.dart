@@ -39,7 +39,7 @@ void main() {
     ''');
     db.execute("INSERT INTO actividad_nivel VALUES ('FD5.02.04','IM1')");
     db.execute('''
-      INSERT INTO actividad_paso VALUES
+      INSERT INTO actividad_paso (actividad_codigo,orden,fase,paso_n,texto) VALUES
         ('FD5.02.04', 0, 'Desmontaje', 1, 'Retirar el tornillo'),
         ('FD5.02.04', 1, 'Desmontaje', 2, 'Extraer la pieza'),
         ('FD5.02.04', 2, 'Montaje', 1, 'Colocar la pieza nueva')
