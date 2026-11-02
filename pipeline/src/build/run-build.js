@@ -12,6 +12,7 @@ import { buildCycleModel } from '../model/cycles.js';
 import { buildCatalog } from '../model/catalog.js';
 import { buildJoinGraph } from '../model/join.js';
 import { normalizarCodigo } from '../model/codes.js';
+import { esMejorVmi } from '../model/vmi-version.js';
 import { writeDatabase } from './sqlite-writer.js';
 import { carryOverridesAndDiff } from './diff.js';
 import { selectAndCopyPdfs, prepararCarpetaPdfs, esVmiIndividual } from './pdf-select-copy.js';
@@ -35,10 +36,11 @@ export function logWalkErrors(area, errors, log) {
 /**
  * Índice código normalizado -> registro VMI. El mismo VMI puede archivarse en
  * más de una subcarpeta de ciclo (join.js lo deduplica igual, acumulando
- * `ciclosCarpeta`); aquí, ante duplicados del mismo código, se prefiere el
- * primer ejemplar que SÍ se pudo extraer -- es la fuente de `frecuencia`,
- * `procedimiento`, etc. que sqlite-writer.js lee por código normalizado.
- * @param {Array<{codigo:string, sinExtraer?:boolean}>} vmiRecords
+ * `ciclosCarpeta`) y en revisiones distintas (`X.pdf` / `X_A0.pdf`); aquí,
+ * ante duplicados del mismo código, se prefiere la edición más alta
+ * (model/vmi-version.js) -- es la fuente de `frecuencia`, `procedimiento`,
+ * etc. que sqlite-writer.js lee por código normalizado.
+ * @param {Array<{codigo:string, sinExtraer?:boolean, edicion?:string|null, fecha?:string|null, relPath?:string}>} vmiRecords
  * @returns {Map<string, any>}
  */
 export function buildVmiByCode(vmiRecords) {
@@ -47,7 +49,7 @@ export function buildVmiByCode(vmiRecords) {
     const c = normalizarCodigo(r.codigo);
     if (!c) continue;
     const prev = vmiByCode.get(c);
-    if (!prev || (prev.sinExtraer && !r.sinExtraer)) vmiByCode.set(c, r);
+    if (!prev || esMejorVmi(r, prev)) vmiByCode.set(c, r);
   }
   return vmiByCode;
 }

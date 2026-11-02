@@ -10,6 +10,7 @@
 // (TOC) de sus manuales de `05`.
 
 import { normalizarCodigo, sistemaDeCodigo } from './codes.js';
+import { esMejorVmi } from './vmi-version.js';
 
 const reCarpetaSistema = /^BB\d+\s+([A-Z]{1,3}\d[A-Z]?)\s+(.+)$/;
 
@@ -90,8 +91,9 @@ export function buildJoinGraph({ plan, materiales, vmiRecords, manualesDirs = []
     if (existing) {
       if (rec.ciclo && !existing.ciclosCarpeta.includes(rec.ciclo)) existing.ciclosCarpeta.push(rec.ciclo);
       if (rec.relPath) existing.vmiRelPaths.push(rec.relPath);
-      // si el registro que teníamos estaba sin extraer y este sí, sustituye los campos
-      if (existing.sinExtraer && !rec.sinExtraer) {
+      // si este ejemplar es mejor que el que teníamos (extraído frente a sin
+      // extraer, o edición más alta -- model/vmi-version.js), sustituye los campos
+      if (esMejorVmi(rec, vmiPorCodigo.get(codigo))) {
         Object.assign(existing, {
           sinExtraer: false,
           componente: rec.componente ?? null,
