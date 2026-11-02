@@ -225,6 +225,31 @@ test('runBuild: un PDF ilegible se degrada a sinExtraer y no aborta el resto del
   }
 });
 
+test('runBuild: las subcarpetas de excluirVmi no se parsean ni se copian a pdfs/', async () => {
+  const corpusDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cs336-excluir-'));
+  try {
+    const { roots } = await buildRealCorpus(corpusDir);
+    const extra = path.join(roots.vmi, 'Revision Horas Disel 4');
+    await fs.mkdir(extra, { recursive: true });
+    await fs.writeFile(path.join(extra, 'VMI.3770.FC1.01.02. Actividad 10.pdf'), minimalPdfBytes());
+    const outDir = path.join(tmp, 'out-excluir');
+
+    const res = await runBuild({
+      cfg: { outDir, bundlePdfs: true, roots, excluirVmi: ['revision horas disel 4'] }, log: () => {},
+    });
+
+    assert.equal(res.sinExtraer.length, 2, 'solo los dos VMI de I1 y NS: el de la carpeta excluida no se parsea');
+    assert.ok(!res.sinExtraer.some((s) => s.relPath.includes('Revision Horas')));
+    assert.ok(!res.incidencias.some((i) => JSON.stringify(i).includes('Actividad 10')),
+      'la carpeta excluida no debe generar incidencias');
+    await assert.rejects(fs.stat(path.join(outDir, 'pdfs', 'vmi', 'Revision Horas Disel 4')),
+      'la carpeta excluida no debe copiarse a pdfs/');
+    await fs.stat(path.join(outDir, 'pdfs', 'vmi', 'I1', 'VMI.3770.FD5.01.01.pdf'));
+  } finally {
+    await fs.rm(corpusDir, { recursive: true, force: true });
+  }
+});
+
 test('runBuild: dataFolderVersion se incrementa al re-extraer con --prev (dos builds reales encadenados)', async () => {
   const corpusDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cs336-realcorpus2-'));
   try {

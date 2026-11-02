@@ -26,7 +26,31 @@ export const REQUIRED_ROOTS = ['plan', 'vmi', 'manuales', 'materiales'];
  * @property {Record<string,string>} roots  nombre -> ruta absoluta
  * @property {string} outDir  ruta absoluta
  * @property {boolean} bundlePdfs
+ * @property {string[]} excluirVmi  subcarpetas de `04` (relativas a ella) que no se extraen ni se copian
  */
+
+/**
+ * Normaliza una ruta relativa de la config: barras `/`, sin `./` ni barras
+ * sobrantes al principio o al final.
+ * @param {string} p
+ */
+function normalizarRelativa(p) {
+  return String(p).trim().replace(/\\/g, '/').replace(/^(\.\/)+/, '').replace(/^\/+|\/+$/g, '');
+}
+
+/**
+ * ¿`relPath` (relativa a `04`, con `/`) cae dentro de alguna subcarpeta excluida?
+ * La comparación ignora mayúsculas, como el sistema de archivos de Windows.
+ * @param {string} relPath
+ * @param {string[]} excluir
+ */
+export function rutaExcluida(relPath, excluir) {
+  const r = relPath.toLowerCase();
+  return excluir.some((e) => {
+    const x = e.toLowerCase();
+    return r === x || r.startsWith(`${x}/`);
+  });
+}
 
 /**
  * Lee y resuelve el archivo de config. Las rutas relativas se resuelven contra
@@ -68,8 +92,12 @@ export async function loadConfig(configPath) {
 
   const outDir = resolveMaybe(cfg.outDir) || path.resolve(baseDir, 'data');
   const bundlePdfs = cfg.bundlePdfs !== false; // por defecto true
+  if (cfg.excluirVmi != null && !(Array.isArray(cfg.excluirVmi) && cfg.excluirVmi.every((e) => typeof e === 'string'))) {
+    throw new Error(`'excluirVmi' debe ser una lista de rutas relativas a la carpeta de VMI (${abs})`);
+  }
+  const excluirVmi = (cfg.excluirVmi ?? []).map(normalizarRelativa).filter(Boolean);
 
-  return { configPath: abs, cdromRoot, roots, outDir, bundlePdfs };
+  return { configPath: abs, cdromRoot, roots, outDir, bundlePdfs, excluirVmi };
 }
 
 /**

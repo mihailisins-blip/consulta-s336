@@ -13,6 +13,7 @@ import { buildCatalog } from '../model/catalog.js';
 import { buildJoinGraph } from '../model/join.js';
 import { normalizarCodigo } from '../model/codes.js';
 import { esMejorVmi } from '../model/vmi-version.js';
+import { rutaExcluida } from '../config.js';
 import { writeDatabase } from './sqlite-writer.js';
 import { carryOverridesAndDiff } from './diff.js';
 import { selectAndCopyPdfs, prepararCarpetaPdfs, esVmiIndividual } from './pdf-select-copy.js';
@@ -153,8 +154,14 @@ export async function runBuild({ cfg, prevDir = null, conToc = false, reanudar =
   let desdeCache = 0;
 
   // ---- VMIs ----
-  const { files: vmiFiles, errors: vmiErrors } = await walkDir(cfg.roots.vmi);
+  const { files: vmiTodos, errors: vmiErrors } = await walkDir(cfg.roots.vmi);
   logWalkErrors('VMI (04)', vmiErrors, log);
+  // subcarpetas excluidas por config (`excluirVmi`): ni se parsean ni se copian
+  const excluirVmi = cfg.excluirVmi ?? [];
+  const vmiFiles = vmiTodos.filter((f) => !rutaExcluida(f.relPath, excluirVmi));
+  if (vmiTodos.length !== vmiFiles.length) {
+    log(`VMI: ${vmiTodos.length - vmiFiles.length} archivo(s) ignorados por 'excluirVmi' (${excluirVmi.join(', ')})`);
+  }
   const vmiPdfs = vmiFiles.filter((f) => f.type === 'pdf' && esVmiIndividual(path.basename(f.name)));
   log(`VMI: parseando ${vmiPdfs.length} PDFs (y extrayendo sus figuras)${reanudar ? ' -- reanudando' : ''}...`);
   let done = 0;
