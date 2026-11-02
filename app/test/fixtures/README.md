@@ -21,7 +21,7 @@ entorno no tiene. Válido para search_service_test.dart (no toca esas
 tablas); no usar para nada que necesite actividad_lote, niveles RDH o
 texto de medidas de seguridad.
 
-## `data-lotes.sqlite` (pequeño, esquema v4)
+## `data-lotes.sqlite` (pequeño, esquema v6)
 
 Generado con `pipeline/scripts/gen-app-fixture.mjs`, que reutiliza los
 mismos 4 VMI reales de `pipeline/test/fixtures/vmi/` y los workbooks de
@@ -29,8 +29,16 @@ mismos 4 VMI reales de `pipeline/test/fixtures/vmi/` y los workbooks de
 `pipeline/` -- real en cuanto al esquema (lo escribe el propio
 `sqlite-writer.js`), pequeño porque no requiere el corpus completo.
 Sí tiene `actividad_lote`, `actividad.seguridad` (FD5.02.04 trae texto real
-de la sección 1 del VMI) y `fusion_catalogo` (v4, vacía hasta que un test
-la usa). Para regenerarlo tras un cambio de esquema:
+de la sección 1 del VMI), `fusion_catalogo` (v4) y `actividad_imagen` (v5):
+ambas tablas existen pero vacías -- los 4 VMI de fixture son transcripciones
+de texto (`.lines.json`), sin PDF de origen, así que no hay figuras que
+extraer; los tests de figuras y de formato del procedimiento siembran filas
+a mano sobre la base mínima (`helpers/minimal_db.dart`). `actividad_paso`
+(v6) trae el procedimiento completo y tipado (título, subtítulos, pasos,
+subpasos, avisos...). Las transcripciones `.lines.json` de
+`pipeline/test/fixtures/vmi/` llevan la tipografía de cada línea y se
+regeneran con `pipeline/scripts/gen-vmi-fixtures.mjs` (necesita `Z:`). Para
+regenerar esta base tras un cambio de esquema:
 
 ```
 cd pipeline

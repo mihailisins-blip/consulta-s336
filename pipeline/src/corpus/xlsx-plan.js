@@ -102,6 +102,7 @@ export function parsePlan(xlsx, workbook) {
   const actividades = [];
   const sistemas = [];
   const grupos = [];
+  const subsistemas = [];
   if (has('PLAN MANTENIMIENTO')) {
     const ws = workbook.Sheets['PLAN MANTENIMIENTO'];
     const range = xlsx.utils.decode_range(ws['!ref']);
@@ -136,7 +137,9 @@ export function parsePlan(xlsx, workbook) {
         const desc = get(r, 1);
         if (reGrupo.test(cod)) { grupos.push({ codigo: cod, nombre: desc || null }); continue; }
         if (reSistema.test(cod)) { sistemas.push({ codigo: cod, nombre: desc || null }); continue; }
-        if (reSub.test(cod)) continue; // subsistema: no aporta al modelo
+        // subsistema: no aporta al modelo, pero su nombre titula los grupos
+        // de la tabla del plan en la app ("ED3.01 · Amortiguadores…")
+        if (reSub.test(cod)) { subsistemas.push({ codigo: cod, nombre: desc || null }); continue; }
         if (reActividad.test(cod)) {
           const ciclos2 = CICLO_COLS.filter((k) => cicloCol[k] != null && /^x$/i.test(get(r, cicloCol[k])));
           actividades.push({
@@ -155,7 +158,7 @@ export function parsePlan(xlsx, workbook) {
     avisos.push("hoja 'PLAN MANTENIMIENTO' ausente");
   }
 
-  return { ciclos, puestaEnServicio, actividades, sistemas, grupos, avisos };
+  return { ciclos, puestaEnServicio, actividades, sistemas, subsistemas, grupos, avisos };
 }
 
 /** @param {string} path */

@@ -7,7 +7,42 @@
 
 import { readFile } from 'node:fs/promises';
 
-/** @typedef {{page:number, y:number, x:number, spans:{x:number,text:string}[], text:string}} PdfLine */
+/**
+ * `size` (pt) y `negrita` describen la tipografía dominante de la línea (la que
+ * cubre más caracteres). `negrita` solo se rellena con `fuentes: true`: hay que
+ * resolver los nombres de fuente de la página, que cuesta un `getOperatorList`.
+ * @typedef {{page:number, y:number, x:number, spans:{x:number,text:string}[], text:string,
+ *   size?:number, negrita?:boolean}} PdfLine
+ */
+
+/** Nombre de cada fuente de la página (id de pdfjs -> "ABCDEF+Arial-BoldMT"). */
+async function nombresDeFuentes(page, items) {
+  const nombres = new Map();
+  try { await page.getOperatorList(); } catch { return nombres; }
+  for (const it of items) {
+    if (!it.fontName || nombres.has(it.fontName)) continue;
+    try { nombres.set(it.fontName, page.commonObjs.get(it.fontName)?.name ?? ''); } catch { nombres.set(it.fontName, ''); }
+  }
+  return nombres;
+}
+
+/** Tipografía dominante de los trozos de una línea. */
+function tipografiaDominante(trozos) {
+  let total = 0;
+  let negrita = 0;
+  const porTamano = new Map();
+  for (const t of trozos) {
+    const n = t.text.trim().length;
+    if (!n) continue;
+    total += n;
+    if (t.negrita) negrita += n;
+    porTamano.set(t.size, (porTamano.get(t.size) ?? 0) + n);
+  }
+  let size;
+  let mejor = 0;
+  for (const [s, n] of porTamano) if (n > mejor) { size = s; mejor = n; }
+  return { size, negrita: total > 0 && negrita * 2 > total };
+}
 
 /**
  * Une spans de una misma línea en un string, insertando un espacio cuando hay
@@ -33,9 +68,10 @@ function joinSpans(spans) {
 
 /**
  * @param {Uint8Array|Buffer} data
+ * @param {{fuentes?: boolean}} [opts]  `fuentes`: detectar también la negrita
  * @returns {Promise<PdfLine[]>}
  */
-export async function pdfToLines(data) {
+export async function pdfToLines(data, { fuentes = false } = {}) {
   const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
   // pdfjs v4 rejects Node Buffer explicitly; hand it a plain Uint8Array copy.
   const bytes = data instanceof Uint8Array && data.constructor === Uint8Array
@@ -52,7 +88,8 @@ export async function pdfToLines(data) {
   for (let pn = 1; pn <= doc.numPages; pn++) {
     const page = await doc.getPage(pn);
     const tc = await page.getTextContent();
-    /** @type {Map<number, {x:number,text:string,w:number}[]>} */
+    const nombres = fuentes ? await nombresDeFuentes(page, tc.items) : new Map();
+    /** @type {Map<number, {x:number,text:string,w:number,size:number,negrita:boolean}[]>} */
     const byY = new Map();
     for (const it of tc.items) {
       // @ts-ignore textItem
@@ -66,20 +103,29 @@ export async function pdfToLines(data) {
       }
       if (!byY.has(key)) byY.set(key, []);
       // @ts-ignore
-      byY.get(key).push({ x: it.transform[4], text: it.str, w: it.width ?? 0 });
+      const size = Math.round(Math.abs(it.transform[3] || it.height || 0) * 2) / 2;
+      // @ts-ignore
+      const negrita = /bold|black|heavy/i.test(nombres.get(it.fontName) ?? '');
+      // @ts-ignore
+      byY.get(key).push({ x: it.transform[4], text: it.str, w: it.width ?? 0, size, negrita });
     }
     const ys = [...byY.keys()].sort((a, b) => b - a);
     for (const y of ys) {
-      const spans = byY.get(y).sort((a, b) => a.x - b.x);
-      const text = joinSpans(spans.map((s) => ({ ...s })));
+      const trozos = byY.get(y).sort((a, b) => a.x - b.x);
+      const text = joinSpans(trozos.map((s) => ({ ...s })));
       if (text === '') continue;
-      lines.push({
+      const { size, negrita } = tipografiaDominante(trozos);
+      /** @type {PdfLine} */
+      const linea = {
         page: pn,
         y,
-        x: spans[0].x,
-        spans: spans.map((s) => ({ x: Math.round(s.x), text: s.text })),
+        x: trozos[0].x,
+        spans: trozos.map((s) => ({ x: Math.round(s.x), text: s.text })),
         text,
-      });
+      };
+      if (size) linea.size = size;
+      if (fuentes) linea.negrita = negrita;
+      lines.push(linea);
     }
   }
   await doc.destroy?.();
@@ -88,10 +134,11 @@ export async function pdfToLines(data) {
 
 /**
  * @param {string} path
+ * @param {{fuentes?: boolean}} [opts]
  * @returns {Promise<PdfLine[]>}
  */
-export async function pdfFileToLines(path) {
-  return pdfToLines(await readFile(path));
+export async function pdfFileToLines(path, opts) {
+  return pdfToLines(await readFile(path), opts);
 }
 
 /**

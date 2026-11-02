@@ -12,13 +12,13 @@
 // Trabaja sobre las "líneas" que produce pdf-text.js; es puro y testeable
 // contra fixtures de líneas.
 
+import { asociarImagenes, CALLOUTS, claveDeLinea } from './vmi-figuras.js';
+
 const HEADER_LABELS = [
   'Vehículo', 'Componente', 'Actividad',
   'Herramientas especiales', 'Consumibles', 'Repuestos',
   'Frecuencia', 'Operación',
 ];
-
-const CALLOUTS = new Set(['AVISO', 'PELIGRO', 'INFORMACIÓN', 'NOTA', 'ATENCIÓN']);
 
 const SECTION_TITLES = {
   1: 'Medidas de seguridad',
@@ -223,100 +223,195 @@ function parseSubTable(rows) {
 
 const rePhaseKeyword = /^(Desmontaje|Montaje|Desarme|Armado|Inspección|Verificación|Comprobación|Sustitución|Reemplazo|Cambio|Ajuste|Regulación|Limpieza|Lubricación|Engrase|Prueba|Ensayo|Puesta en servicio|Puesta fuera de servicio)\b/i;
 
+// Tipografía de la plantilla (medida en el corpus, KTD9): título de fase 18 pt,
+// subtítulo 12 pt negrita, cuerpo 11 pt, viñeta "●" a 8 pt. Dos líneas del
+// mismo párrafo distan ~15 pt; entre párrafos, viñetas o pasos, 18 pt o más.
+const TAM_TITULO = 17;
+const TAM_SUBTITULO = 11.5;
+const SALTO_PARRAFO = 17;
+// "●" es el símbolo de la plantilla; "ü" es la marca de verificación de Wingdings
+// ("ü MODO R: ...") y va siempre seguida de espacio.
+const reViñeta = /^(?:[●•▪]\s*|ü\s+)(.*)$/;
+
 /**
- * Sección 4: preámbulo, fases, pasos numerados y avisos.
- * @param {PdfLine[]} lines
+ * Tipos de elemento del procedimiento: `titulo` (fase), `subtitulo`, `paso`
+ * (con `n`), `subpaso` (con `etiqueta` = letra), `vineta`, `parrafo` y `aviso`
+ * (con `etiqueta` = AVISO, PRECAUCIÓN...). Es una lista plana en orden de
+ * lectura: la app la dibuja tal cual, y las figuras se intercalan por posición.
+ * `fase` es el título vigente; `clave` la posición de lectura de su primera línea.
+ * @typedef {{tipo:string, texto:string, n?:number, etiqueta?:string, fase:string|null,
+ *   clave:number}} ElementoProcedimiento
  */
-function parseProcedimiento(lines) {
-  /** @type {{titulo:string, pasos:any[], notas:any[]}[]} */
-  const fases = [];
-  const preNotas = [];
-  let preambulo = '';
-  const nuevaFase = (t) => {
-    const f = { titulo: t, pasos: [], notas: [] };
-    fases.push(f);
-    return f;
-  };
+
+/**
+ * Sección 4. Sin la tipografía de las líneas (fixtures antiguos, PDF que no la
+ * da) cae a las reglas por texto: palabra clave de fase y primera línea
+ * sustantiva.
+ * @param {PdfLine[]} lines
+ * @param {Set<object>} [consumidas]  pies y leyendas de figura, que no son texto del procedimiento
+ * @returns {{items: ElementoProcedimiento[]}}
+ */
+function parseProcedimiento(lines, consumidas = new Set()) {
+  const util = lines.filter((l) => l.text.trim() && !consumidas.has(l));
+  const hayTipografia = util.some((l) => l.size != null);
+  const hayNegrita = util.some((l) => l.negrita != null);
+  /** @type {(ElementoProcedimiento & {x?:number})[]} */
+  const items = [];
   let fase = null;
-  let paso = null;
-  let callout = null;      // { titulo, texto } en curso
-  let seenStepOrPhase = false;
-  const items = lines.map((l) => ({ x: l.x, t: l.text.trim() })).filter((it) => it.t);
+  let abierto = null;      // elemento al que pueden sumarse líneas de continuación
+  let aviso = null;        // { item, regulares, titular, parrafos }: aviso con el cuerpo aún abierto
+  let yPrev = null;        // línea anterior (para medir el salto vertical)
+  let visto = false;       // ya hubo un título o un paso
+  let ultimoPaso = 0;      // número del último paso numerado
 
-  const flushCallout = () => {
-    if (!callout) return;
-    callout.texto = callout.texto.replace(/\s+/g, ' ').trim();
-    const target = paso?.notas ?? fase?.notas ?? preNotas;
-    target.push(callout);
-    callout = null;
+  const nuevo = (tipo, linea, texto, extra = {}) => {
+    const it = { tipo, texto, fase, clave: claveDeLinea(linea), x: linea.x, ...extra };
+    items.push(it);
+    if (tipo === 'titulo' || tipo === 'paso') visto = true;
+    return it;
   };
+  // título de fase por texto (palabra clave de operación), para cuando no hay tipografía
+  const tituloPorTexto = (t, x) => x < 95 && t.length <= 70 && !/[.;:]$/.test(t) && rePhaseKeyword.test(t);
 
-  for (let i = 0; i < items.length; i++) {
-    const { x, t } = items[i];
-    const next = items[i + 1]?.t ?? '';
-    const next2 = items[i + 2]?.t ?? '';
+  for (let i = 0; i < util.length; i++) {
+    const l = util[i];
+    const t = l.text.trim();
+    const x = l.x;
+    const prev = yPrev;
+    const gap = prev && prev.page === l.page ? prev.y - l.y : Infinity;
+    const mismaPagina = gap !== Infinity;
+    const siguiente = util[i + 1]?.text.trim() ?? '';
+    const siguiente2 = util[i + 2]?.text.trim() ?? '';
+    yPrev = l;
 
+    // --- aviso: título (AVISO, PRECAUCIÓN...) y su cuerpo ---
     if (CALLOUTS.has(t.toUpperCase())) {
-      flushCallout();
-      callout = { titulo: t, texto: '' };
+      abierto = null;
+      const it = nuevo('aviso', l, '', { etiqueta: t.toUpperCase() });
+      aviso = { item: it, regulares: false, titular: false, parrafos: 0 };
       continue;
     }
+    if (aviso) {
+      // El cuerpo del aviso va en negrita en la plantilla. Si abre con un
+      // subtítulo en negrita (corto y sin punto final: "Pares de apriete"), el
+      // párrafo normal que le sigue es también del aviso. Cualquier otra línea
+      // normal ya es texto del procedimiento.
+      const estructural = (reStep.test(t) && x < 70) || reViñeta.test(t)
+        || (hayTipografia ? l.size >= TAM_TITULO : tituloPorTexto(t, x));
+      const esNegrita = hayNegrita ? !!l.negrita : true;
+      let sigue = mismaPagina && !estructural && gap <= 30;
+      if (sigue && aviso.parrafos > 0 && hayNegrita) {
+        if (aviso.regulares) sigue = gap <= SALTO_PARRAFO;
+        else if (!esNegrita) sigue = aviso.titular && aviso.parrafos === 1;
+      }
+      if (sigue) {
+        if (aviso.parrafos === 0) {
+          aviso.item.texto = t;
+          aviso.parrafos = 1;
+          aviso.titular = esNegrita && t.length <= 45 && !/[.:;]$/.test(t);
+          aviso.regulares = hayNegrita && !esNegrita;
+        } else if (gap > SALTO_PARRAFO || (hayNegrita && !esNegrita && !aviso.regulares)) {
+          aviso.item.texto += `\n${t}`;
+          aviso.parrafos++;
+          if (hayNegrita && !esNegrita) aviso.regulares = true;
+        } else {
+          aviso.item.texto += ` ${t}`;
+        }
+        continue;
+      }
+      aviso = null;
+    }
 
-    const stepM = t.match(reStep);
-    if (stepM && x < 70) {
-      flushCallout();
-      seenStepOrPhase = true;
-      if (!fase) fase = nuevaFase('');
-      paso = { n: Number(stepM[1]), texto: stepM[2].trim(), subpasos: [], notas: [] };
-      fase.pasos.push(paso);
+    // --- paso y subpaso ---
+    // Un paso va pegado al margen; pero junto a una captura de pantalla puede ir
+    // a la derecha de la imagen (x ~ 240-280): vale si es el número que toca.
+    const pasoM = t.match(reStep);
+    if (pasoM && (x < 70 || Number(pasoM[1]) === ultimoPaso + 1)) {
+      ultimoPaso = Number(pasoM[1]);
+      abierto = nuevo('paso', l, pasoM[2].trim(), { n: ultimoPaso });
       continue;
     }
     const subM = t.match(reSubstep);
-    if (subM && paso && x >= 62) {
-      paso.subpasos.push({ letra: subM[1], texto: subM[2].trim() });
+    if (subM && x >= 62 && items.some((it) => it.tipo === 'paso')) {
+      abierto = nuevo('subpaso', l, subM[2].trim(), { etiqueta: subM[1] });
       continue;
     }
 
-    // título de fase: palabra clave de operación (siempre corta el aviso en curso),
-    // o la primera línea sustantiva tras el preámbulo cuando no hay aviso abierto.
-    // Va ANTES del descarte de bloques de piezas (si no, "Desmontaje" seguido de
-    // "002 ..." se perdería).
-    const titleLike = x < 95 && !stepM && !subM && t.length <= 70 && !/[.;:]$/.test(t);
-    const isPhaseKeyword = titleLike && rePhaseKeyword.test(t);
-    const isFirstTitle = titleLike && !callout && !seenStepOrPhase && /[a-záéíóú]/.test(t);
-    if (isPhaseKeyword || isFirstTitle) {
-      flushCallout();
-      fase = nuevaFase(t);
-      paso = null;
-      seenStepOrPhase = true;
+    // --- viñeta ---
+    const vinM = t.match(reViñeta);
+    if (vinM) {
+      abierto = nuevo('vineta', l, vinM[1].trim());
+      continue;
+    }
+
+    // --- título de fase (18 pt; líneas seguidas del mismo tamaño son un título) ---
+    const esTitulo = hayTipografia
+      ? l.size >= TAM_TITULO
+      : tituloPorTexto(t, x) || (!visto && x < 95 && t.length <= 70 && !/[.;:]$/.test(t) && /[a-záéíóú]/.test(t));
+    if (esTitulo) {
+      const ant = items[items.length - 1];
+      const continua = hayTipografia && ant?.tipo === 'titulo' && prev && prev.page === l.page
+        && prev.size === l.size && gap <= 24;
+      if (continua) {
+        ant.texto += ` ${t}`;
+        ant.fase = ant.texto;
+        fase = ant.texto;
+      } else {
+        fase = t;
+        nuevo('titulo', l, t);
+      }
+      abierto = null;
+      continue;
+    }
+
+    // --- subtítulo: negrita 12 pt, o un rótulo de lista terminado en ":" que va en
+    // MAYÚSCULAS ("CONSEJOS PARA LA LIMPIEZA:") o en negrita ("Test del compresor:").
+    // Antes que los bloques de piezas: "Desmontaje" también va seguido de una
+    // leyenda "002 Cuerpo..." cuando la imagen no se pudo asociar. ---
+    const soloMayus = t === t.toUpperCase() && /[A-ZÁÉÍÓÚÑ]/.test(t);
+    const esRotulo = /:$/.test(t) && t.length <= 90 && (soloMayus || (l.negrita && t.length <= 60));
+    const esSubtitulo = hayTipografia
+      && ((l.size >= TAM_SUBTITULO && l.size < TAM_TITULO) || esRotulo);
+    if (esSubtitulo) {
+      nuevo('subtitulo', l, t);
+      abierto = null;
       continue;
     }
 
     if (rePartRef.test(t)) continue; // "002 Cuerpo de acoplamiento" — se ignora para R6
     // encabezado de bloque de piezas: título a la izquierda seguido de líneas "NNN ..."
-    if (x < 75 && (rePartRef.test(next) || rePartRef.test(next2))) continue;
+    if (x < 75 && (rePartRef.test(siguiente) || rePartRef.test(siguiente2))) continue;
 
-    // texto de continuación
-    if (callout) { callout.texto += (callout.texto ? ' ' : '') + t; continue; }
-    if (!seenStepOrPhase) { preambulo += (preambulo ? ' ' : '') + t; continue; }
-    if (paso) { paso.texto += ` ${t}`; continue; }
-    if (fase) fase.notas.push(t);
+    // --- texto: continuación del elemento abierto, o párrafo nuevo ---
+    if (abierto && mismaPagina && gap <= SALTO_PARRAFO) {
+      abierto.texto += ` ${t}`;
+      continue;
+    }
+    // un renglón sangrado al principio de página sigue el paso o la viñeta que
+    // quedó abierto (la continuación va ~24 pt a la derecha de su marcador)
+    if (abierto && !mismaPagina && abierto.tipo !== 'parrafo' && x >= abierto.x + 15) {
+      abierto.texto += ` ${t}`;
+      continue;
+    }
+    abierto = nuevo('parrafo', l, t);
   }
-  flushCallout();
 
-  for (const f of fases) for (const p of f.pasos) p.texto = p.texto.replace(/\s+/g, ' ').trim();
-  return {
-    preambulo: preambulo.replace(/\s+/g, ' ').trim() || null,
-    notas: preNotas,
-    fases: fases.filter((f) => f.titulo || f.pasos.length),
-  };
+  const finales = items.filter((it) => it.texto || it.tipo === 'titulo');
+  for (const it of finales) {
+    it.texto = it.texto.replace(/[ \t]+/g, ' ').trim();
+    delete it.x;
+  }
+  return { items: finales };
 }
 
 /**
  * @param {PdfLine[]} rawLines  salida de pdf-text.js
- * @param {{codigo:string}} opts
+ * @param {{codigo:string, cajas?:import('./vmi-figuras.js').CajaImagen[]}} opts
+ *   `cajas`: posición de las imágenes grandes del PDF (vmi-images.js); si se
+ *   pasan, el registro trae además `figuras` (imágenes de zonas de trabajo y
+ *   de procedimiento con su pie, leyenda y paso al que preceden).
  */
-export function parseVmi(rawLines, { codigo }) {
+export function parseVmi(rawLines, { codigo, cajas = [] }) {
   const meta = extractMeta(rawLines);
   const lines = cleanLines(rawLines);
   const header = parseHeaderBlock(lines);
@@ -347,7 +442,8 @@ export function parseVmi(rawLines, { codigo }) {
     repuestos: { aplica: false },
     zonasTrabajo: null,
     seguridad: null,
-    procedimiento: { preambulo: null, fases: [] },
+    procedimiento: { items: [] },
+    figuras: [],
     sinExtraer: false,
     motivo: null,
   };
@@ -405,10 +501,29 @@ export function parseVmi(rawLines, { codigo }) {
     record.zonasTrabajo = txt.length ? [...new Set(txt)].join('; ') : null;
   }
 
+  // Imágenes de las secciones 3 y 4 (con su pie y leyenda). Son un añadido al
+  // texto: si su asociación fallara por un caso raro, el VMI se queda sin
+  // figuras pero NO deja de extraerse. Va antes que el procedimiento porque el
+  // pie y la leyenda de cada figura no son texto del procedimiento.
+  const consumidas = new Set();
+  try {
+    record.figuras = cajas.length ? asociarImagenes({ lines, sections, endOf, cajas, consumidas }) : [];
+  } catch {
+    record.figuras = [];
+    consumidas.clear();
+  }
+
   // Sección 4
   if (sections[4] !== undefined) {
     const s4 = lines.slice(sections[4] + 1, endOf(4));
-    record.procedimiento = parseProcedimiento(s4);
+    record.procedimiento = parseProcedimiento(s4, consumidas);
+  }
+
+  // Cada figura del procedimiento se dibuja justo antes del primer elemento que
+  // la sigue en el documento: `antesDePaso` es su posición (`orden` en la BD).
+  const { items } = record.procedimiento;
+  for (const f of record.figuras) {
+    if (f.seccion === 'procedimiento') f.antesDePaso = items.filter((it) => it.clave < f.clave).length;
   }
 
   return record;
@@ -424,6 +539,6 @@ export async function parseVmiFile(path, opts = {}) {
   const nodePath = await import('node:path');
   const codigo = opts.codigo
     ?? nodePath.basename(path).replace(/\.pdf$/i, '').replace(/_A0$/i, '');
-  const lines = await pdfFileToLines(path);
+  const lines = await pdfFileToLines(path, { fuentes: true });
   return parseVmi(lines, { codigo });
 }

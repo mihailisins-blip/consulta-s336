@@ -38,6 +38,7 @@ Flags de `build`:
 | `--dry-run` | Solo inventario; no escribe la carpeta de datos. |
 | `--prev <carpeta>` | Re-extracción: traspasa las ediciones del curador (`overrides`, fichas revisadas) de esa carpeta anterior y marca los cambios de origen en `cambio_pendiente`. |
 | `--con-toc` | Extrae el índice (outline) de los manuales de `05`. Lento; por defecto no. |
+| `--reanudar` | Continúa una extracción interrumpida en la misma carpeta de datos: no repite los PDF ya copiados ni los VMI ya procesados. |
 
 `config.json` (ejemplo — se admiten `/` en las rutas):
 
@@ -51,5 +52,6 @@ Flags de `build`:
 
 La carpeta de datos resultante contiene `data.sqlite` (datos + índice FTS5),
 `pdfs/` (los VMI individuales, manuales de `05` y esquemas; se excluyen los
-mega-PDF pre-fusionados por ciclo) y `manifest.json` (versión de esquema y de
-carpeta, fecha, orígenes, conteos).
+mega-PDF pre-fusionados por ciclo), `imagenes/` (las figuras de zonas de
+trabajo y de procedimiento de cada VMI, ya reducidas) y `manifest.json`
+(versión de esquema y de carpeta, fecha, orígenes, conteos).

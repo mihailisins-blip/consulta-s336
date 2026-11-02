@@ -24,9 +24,18 @@ Database openMinimalTestDb() {
       codigo TEXT PRIMARY KEY, sistema_codigo TEXT, vmi_rel_path TEXT,
       sin_extraer INTEGER DEFAULT 0, motivo TEXT, componente TEXT, actividad_tipo TEXT,
       operacion TEXT, frecuencia TEXT, edicion TEXT, descripcion_plan TEXT,
-      zonas_trabajo TEXT, seguridad TEXT, duracion TEXT, zona TEXT
+      zonas_trabajo TEXT, seguridad TEXT, duracion TEXT, zona TEXT,
+      marca_seguridad INTEGER DEFAULT 0, observaciones_plan TEXT
     );
-    CREATE TABLE actividad_paso (actividad_codigo TEXT, orden INTEGER, fase TEXT, paso_n INTEGER, texto TEXT);
+    CREATE TABLE actividad_paso (
+      actividad_codigo TEXT, orden INTEGER, fase TEXT, paso_n INTEGER, texto TEXT,
+      tipo TEXT NOT NULL DEFAULT 'paso', etiqueta TEXT
+    );
+    CREATE TABLE actividad_imagen (
+      actividad_codigo TEXT, seccion TEXT, orden INTEGER,
+      archivo TEXT, ancho INTEGER, alto INTEGER,
+      titulo TEXT, leyenda TEXT, antes_de_paso INTEGER
+    );
     CREATE TABLE catalogo (
       id TEXT PRIMARY KEY, codigo_erp TEXT, descripcion TEXT, fabricante TEXT,
       referencia TEXT, unidad TEXT, tipo TEXT, fuente TEXT

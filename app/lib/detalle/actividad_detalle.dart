@@ -4,6 +4,8 @@
 // lectura para el técnico (R18); el curador (R18/U14) ve además una
 // sección editable para los campos reservados al simulador (R7).
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
@@ -45,6 +47,8 @@ class ActividadDetalleScreen extends StatelessWidget {
 
     final herramientas = detalle.materiales.where((m) => m.tipo == 'herramienta').toList();
     final consumibles = detalle.materiales.where((m) => m.tipo != 'herramienta').toList();
+    final zonasImagenes = detalle.imagenes.where((i) => i.seccion == 'zonas').toList();
+    final procedimientoImagenes = detalle.imagenes.where((i) => i.seccion == 'procedimiento').toList();
 
     return Scaffold(
       appBar: AppBar(title: Text(detalle.codigo)),
@@ -115,16 +119,24 @@ class ActividadDetalleScreen extends StatelessWidget {
               Text('Consumibles y repuestos', style: Theme.of(context).textTheme.titleMedium),
               _ListaMateriales(materiales: consumibles),
             ],
-            if (detalle.zonasTrabajo != null) ...[
+            if (detalle.zonasTrabajo != null || zonasImagenes.isNotEmpty) ...[
               const SizedBox(height: 16),
               Text('Zona de trabajo', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 4),
-              Text(detalle.zonasTrabajo!),
+              // Con figuras, el texto (que es la lista de sus pies) sería
+              // repetir lo que cada figura ya lleva como título.
+              if (zonasImagenes.isEmpty) Text(detalle.zonasTrabajo!),
+              if (zonasImagenes.isNotEmpty)
+                _FigurasDeZona(imagenes: zonasImagenes, dataDir: session.dataDir),
             ],
-            if (detalle.pasos.isNotEmpty) ...[
+            if (detalle.pasos.isNotEmpty || procedimientoImagenes.isNotEmpty) ...[
               const SizedBox(height: 16),
               Text('Procedimiento', style: Theme.of(context).textTheme.titleMedium),
-              _Procedimiento(pasos: detalle.pasos),
+              _Procedimiento(
+                pasos: detalle.pasos,
+                imagenes: procedimientoImagenes,
+                dataDir: session.dataDir,
+              ),
             ],
           ],
           if (detalle.seguridad != null) ...[
@@ -269,30 +281,340 @@ class _ListaMateriales extends StatelessWidget {
 
 class _Procedimiento extends StatelessWidget {
   final List<ActividadPaso> pasos;
-  const _Procedimiento({required this.pasos});
+  final List<ActividadImagen> imagenes;
+  final String dataDir;
+  const _Procedimiento({required this.pasos, required this.imagenes, required this.dataDir});
 
   @override
   Widget build(BuildContext context) {
-    final porFase = <String, List<ActividadPaso>>{};
+    // Elementos en orden de lectura (títulos, pasos, viñetas, avisos...), cada
+    // figura justo antes del elemento al que precede (en el PDF la figura va
+    // encima de lo que ilustra). Una figura sin elemento al que preceder -- la
+    // última de la página, o un VMI sin texto reconocido -- va al final.
+    final pendientes = [...imagenes]
+      ..sort((a, b) => (a.antesDePaso ?? 1 << 30).compareTo(b.antesDePaso ?? 1 << 30));
+    var siguiente = 0;
+    final hijos = <Widget>[];
+    ActividadPaso? anterior;
     for (final paso in pasos) {
-      final fase = (paso.fase?.isNotEmpty ?? false) ? paso.fase! : '';
-      porFase.putIfAbsent(fase, () => []).add(paso);
+      while (siguiente < pendientes.length &&
+          (pendientes[siguiente].antesDePaso ?? 1 << 30) <= paso.orden) {
+        hijos.add(FiguraVmi(imagen: pendientes[siguiente++], dataDir: dataDir));
+      }
+      hijos.add(_ElementoProcedimiento(paso: paso, anterior: anterior, esElPrimero: anterior == null));
+      anterior = paso;
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (final entry in porFase.entries) ...[
-          if (entry.key.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(entry.key, style: Theme.of(context).textTheme.titleSmall),
-          ],
-          for (final paso in entry.value)
+    while (siguiente < pendientes.length) {
+      hijos.add(FiguraVmi(imagen: pendientes[siguiente++], dataDir: dataDir));
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: hijos);
+  }
+}
+
+/// Un elemento del procedimiento con la separación que le toca según lo que le
+/// precede: los títulos y subtítulos se despegan de la lista anterior, y una
+/// numeración que vuelve a empezar (1, 2, 3, 1, 2, 3) abre un bloque nuevo en
+/// vez de seguir pegada al anterior.
+class _ElementoProcedimiento extends StatelessWidget {
+  final ActividadPaso paso;
+  final ActividadPaso? anterior;
+  final bool esElPrimero;
+  const _ElementoProcedimiento({
+    required this.paso,
+    required this.anterior,
+    required this.esElPrimero,
+  });
+
+  /// Hueco (px) sobre el elemento.
+  double get _arriba {
+    if (esElPrimero) return 8;
+    switch (paso.tipo) {
+      case TipoPaso.titulo:
+        return 24;
+      case TipoPaso.subtitulo:
+        return 16;
+      case TipoPaso.aviso:
+        return 12;
+      case TipoPaso.parrafo:
+        return 8;
+      case TipoPaso.paso:
+        final empiezaLista = anterior != null &&
+            anterior!.tipo == TipoPaso.paso &&
+            (paso.n ?? 0) <= (anterior!.n ?? 0);
+        return empiezaLista ? 16 : 6;
+      case TipoPaso.subpaso:
+      case TipoPaso.vineta:
+        return 4;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tema = Theme.of(context);
+    final Widget contenido;
+    switch (paso.tipo) {
+      case TipoPaso.titulo:
+        contenido = Text(
+          paso.texto,
+          style: tema.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+        );
+      case TipoPaso.subtitulo:
+        contenido = Text(
+          paso.texto,
+          style: tema.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+        );
+      case TipoPaso.paso:
+        contenido = _Marcador(marca: '${paso.n ?? ''}.', ancho: 28, texto: paso.texto, sangria: 8);
+      case TipoPaso.subpaso:
+        contenido = _Marcador(marca: '${paso.etiqueta ?? ''}.', ancho: 24, texto: paso.texto, sangria: 36);
+      case TipoPaso.vineta:
+        contenido = _Marcador(marca: '•', ancho: 16, texto: paso.texto, sangria: 16);
+      case TipoPaso.parrafo:
+        contenido = Padding(padding: const EdgeInsets.only(left: 8), child: Text(paso.texto));
+      case TipoPaso.aviso:
+        contenido = _AvisoProcedimiento(clase: paso.etiqueta ?? '', texto: paso.texto);
+    }
+    return Padding(padding: EdgeInsets.only(top: _arriba), child: contenido);
+  }
+}
+
+/// Marca (número, letra, viñeta) en columna propia: el texto que se parte en
+/// varias líneas queda alineado bajo sí mismo, no bajo la marca.
+class _Marcador extends StatelessWidget {
+  final String marca;
+  final double ancho;
+  final double sangria;
+  final String texto;
+  const _Marcador({
+    required this.marca,
+    required this.ancho,
+    required this.sangria,
+    required this.texto,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(left: sangria),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: ancho, child: Text(marca)),
+          Expanded(child: Text(texto)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Aviso, precaución, nota... del procedimiento, como recuadro de color. El
+/// cuerpo trae los párrafos separados por salto de línea: si hay más de uno, el
+/// primero es el subtítulo del aviso ("Pares de apriete") y va en negrita.
+class _AvisoProcedimiento extends StatelessWidget {
+  final String clase;
+  final String texto;
+  const _AvisoProcedimiento({required this.clase, required this.texto});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final upper = clase.toUpperCase();
+    final (Color fondo, Color tinta, IconData icono) = switch (upper) {
+      'PELIGRO' => (scheme.errorContainer, scheme.onErrorContainer, Icons.warning_amber_rounded),
+      'NOTA' || 'INFORMACIÓN' =>
+        (scheme.secondaryContainer, scheme.onSecondaryContainer, Icons.info_outline),
+      _ => (scheme.tertiaryContainer, scheme.onTertiaryContainer, Icons.warning_amber_rounded),
+    };
+    final parrafos = texto.split('\n');
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+      decoration: BoxDecoration(
+        color: fondo,
+        borderRadius: BorderRadius.circular(8),
+        border: Border(left: BorderSide(color: tinta, width: 4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icono, size: 18, color: tinta),
+              const SizedBox(width: 6),
+              Text(
+                clase,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: tinta,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          for (var i = 0; i < parrafos.length; i++)
             Padding(
-              padding: const EdgeInsets.only(left: 8, top: 4),
-              child: Text('${paso.n}. ${paso.texto}'),
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                parrafos[i],
+                style: TextStyle(
+                  color: tinta,
+                  fontWeight: (parrafos.length > 1 && i == 0) ? FontWeight.w700 : null,
+                ),
+              ),
             ),
         ],
-      ],
+      ),
+    );
+  }
+}
+
+/// Figuras de la zona de trabajo. Hasta dos van una bajo otra; con más, se
+/// reparten en dos columnas (la lectura sigue de izquierda a derecha y luego
+/// baja), para que una zona con cinco o siete imágenes no sea una columna
+/// interminable. Si la ventana es estrecha vuelve a una sola columna.
+class _FigurasDeZona extends StatelessWidget {
+  final List<ActividadImagen> imagenes;
+  final String dataDir;
+  const _FigurasDeZona({required this.imagenes, required this.dataDir});
+
+  /// Ancho mínimo por columna para que la figura (y su leyenda) se lean bien.
+  static const double _anchoColumnaMinimo = 360;
+  static const double _hueco = 16;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, c) {
+        final dosColumnas =
+            imagenes.length > 2 && c.maxWidth >= 2 * _anchoColumnaMinimo + _hueco;
+        if (!dosColumnas) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [for (final i in imagenes) FiguraVmi(imagen: i, dataDir: dataDir)],
+          );
+        }
+        final ancho = ((c.maxWidth - _hueco) / 2).clamp(0.0, FiguraVmi.anchoPorDefecto);
+        return Wrap(
+          spacing: _hueco,
+          crossAxisAlignment: WrapCrossAlignment.start,
+          children: [
+            for (final i in imagenes)
+              SizedBox(
+                width: ancho,
+                child: FiguraVmi(imagen: i, dataDir: dataDir, anchoMaximo: ancho),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Figura de un VMI: título, imagen (tocar para ampliar) y, si la lleva, la
+/// tabla de componentes numerados que los marcadores de la imagen citan.
+class FiguraVmi extends StatelessWidget {
+  final ActividadImagen imagen;
+  final String dataDir;
+
+  /// Ancho máximo de la imagen y de su leyenda.
+  final double anchoMaximo;
+  const FiguraVmi({
+    super.key,
+    required this.imagen,
+    required this.dataDir,
+    this.anchoMaximo = anchoPorDefecto,
+  });
+
+  static const double anchoPorDefecto = 640;
+
+  Widget _imagen({BoxFit fit = BoxFit.contain}) => Image.file(
+    File(p.join(dataDir, 'imagenes', imagen.archivo)),
+    fit: fit,
+    errorBuilder: (_, _, _) => const Padding(
+      padding: EdgeInsets.all(16),
+      child: Text('Imagen no disponible en esta carpeta de datos.'),
+    ),
+  );
+
+  void _ampliar(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (_) => Dialog(
+        child: Stack(
+          children: [
+            InteractiveViewer(maxScale: 6, child: _imagen()),
+            Positioned(
+              top: 4,
+              right: 4,
+              child: IconButton(
+                icon: const Icon(Icons.close),
+                tooltip: 'Cerrar',
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12, bottom: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (imagen.titulo != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(imagen.titulo!, style: Theme.of(context).textTheme.titleSmall),
+            ),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: anchoMaximo),
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: scheme.outlineVariant),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: () => _ampliar(context),
+                child: _imagen(),
+              ),
+            ),
+          ),
+          if (imagen.leyenda.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: anchoMaximo),
+                child: Table(
+                  columnWidths: const {0: FixedColumnWidth(40)},
+                  border: TableBorder.all(color: scheme.outlineVariant),
+                  defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                  children: [
+                    for (final item in imagen.leyenda)
+                      TableRow(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Center(
+                              child: Text(item.n, style: const TextStyle(fontWeight: FontWeight.w600)),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                            child: Text(item.nombre),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

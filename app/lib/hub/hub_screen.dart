@@ -1,5 +1,5 @@
-// Panel-hub (R13): buscador global permanente + accesos a por sistema, por
-// ciclo, catálogo, y últimas consultadas.
+// Panel-hub (R13): buscador global permanente + accesos a la tabla del plan,
+// por sistema, por ciclo, catálogo, y últimas consultadas.
 
 import 'package:flutter/material.dart';
 import 'package:sqlite3/sqlite3.dart';
@@ -8,6 +8,7 @@ import '../app_session.dart';
 import '../detalle/actividad_detalle.dart';
 import '../search/search_service.dart';
 import 'catalogo_screen.dart';
+import 'plan_screen.dart';
 import 'por_ciclo_screen.dart';
 import 'por_sistema_screen.dart';
 import 'recientes.dart';
@@ -118,6 +119,15 @@ class _HubScreenState extends State<HubScreen> {
               spacing: 12,
               runSpacing: 12,
               children: [
+                _HubEntryCard(
+                  icon: Icons.table_chart_outlined,
+                  label: 'Plan',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => PlanScreen(session: _session),
+                    ),
+                  ),
+                ),
                 _HubEntryCard(
                   icon: Icons.category_outlined,
                   label: 'Por sistema',
