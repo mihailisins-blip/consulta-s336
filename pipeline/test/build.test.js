@@ -71,6 +71,8 @@ test('writeDatabase: data.sqlite abre y la búsqueda FTS devuelve la actividad',
   assert.ok(db.prepare('SELECT count(*) c FROM actividad_paso WHERE actividad_codigo = ?').get('FD5.02.04').c >= 10);
   assert.ok(db.prepare('SELECT count(*) c FROM actividad_material').get().c >= 5);
   assert.equal(db.prepare('SELECT revisado FROM ficha_sistema WHERE sistema_codigo = ?').get('FD5').revisado, 0);
+  // nombres de subsistema del plan, para titular los grupos de la tabla del plan
+  assert.equal(db.prepare('SELECT nombre FROM subsistema WHERE codigo = ?').get('FD5.01').nombre, 'Reductor');
 
   // v6: el procedimiento se guarda completo y tipado (título, subtítulos, pasos,
   // subpasos, avisos...), en orden de lectura y con `orden` contiguo

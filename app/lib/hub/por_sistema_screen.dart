@@ -235,7 +235,7 @@ class _PorSistemaScreenState extends State<PorSistemaScreen> {
 }
 
 /// Nombre a mostrar para [s], o el propio código si no hay nombre.
-String _tituloSistema(Sistema s) => s.nombre != null ? _formatearNombreSistema(s.nombre!) : s.codigo;
+String _tituloSistema(Sistema s) => s.nombre != null ? formatearNombreSistema(s.nombre!) : s.codigo;
 
 /// Los nombres de sistema vienen del nombre de la carpeta de `05` tal cual
 /// (join.js) -- algunos ya están en formato correcto ("Caja del vehículo"),
@@ -244,7 +244,7 @@ String _tituloSistema(Sistema s) => s.nombre != null ? _formatearNombreSistema(s
 /// ya vienen bien como los acrónimos independientes cortos (p. ej. "CCTV",
 /// "TWC") que perderían sentido en minúsculas -- heurística: una sola
 /// palabra, sin espacios, de 4 letras o menos.
-String _formatearNombreSistema(String nombre) {
+String formatearNombreSistema(String nombre) {
   final t = nombre.trim();
   if (t.isEmpty || t != t.toUpperCase()) return t;
   if (!t.contains(' ') && t.length <= 4) return t;
@@ -270,7 +270,7 @@ class SistemaDetalleScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('${s.codigo}${s.nombre != null ? ' — ${_formatearNombreSistema(s.nombre!)}' : ''}'),
+        title: Text('${s.codigo}${s.nombre != null ? ' — ${formatearNombreSistema(s.nombre!)}' : ''}'),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),

@@ -100,6 +100,14 @@ test('parsePlan: PLAN MANTENIMIENTO matriz actividad × ciclo', () => {
   assert.ok(!act['BA1.01']);
 });
 
+test('parsePlan: guarda el nombre de cada subsistema para titular los grupos', () => {
+  const p = parsePlan(xlsx, fakePlanWorkbook());
+  const sub = Object.fromEntries(p.subsistemas.map((s) => [s.codigo, s.nombre]));
+  assert.equal(sub['FD5.01'], 'Reductor');
+  assert.ok(!('FD5' in sub), 'un sistema no es un subsistema');
+  assert.ok(!('FD5.01.01' in sub), 'una actividad no es un subsistema');
+});
+
 test('parsePlan: PLAN MANTENIMIENTO encuentra la cabecera aunque esté más allá de la fila 20', () => {
   const filas = Array.from({ length: 22 }, () => []); // 22 filas en blanco antes de la cabecera
   filas.push(['CÓDIGO', 'DESCRIPCIÓN DE LAS OPERACIONES', 'MARCA SEG.', 'I1', 'I2', 'IM1', 'IM2', 'IM3', 'R1', 'R2', 'NS', 'OBSERVACIONES']);

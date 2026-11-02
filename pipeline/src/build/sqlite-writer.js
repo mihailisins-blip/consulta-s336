@@ -22,6 +22,11 @@ CREATE TABLE manual_toc (
 CREATE TABLE ficha_sistema (
   sistema_codigo TEXT PRIMARY KEY, cuerpo TEXT, revisado INTEGER DEFAULT 0
 );
+-- Nombres de subsistema del plan ("ED3.01" -> "Amortiguadores de primaria y
+-- secundaria"): títulos de grupo de la tabla del plan en la app. Tabla
+-- añadida sin subir el esquema -- la app la trata como opcional (si falta,
+-- agrupa sin nombre), así que una carpeta v6 anterior sigue siendo válida.
+CREATE TABLE subsistema (codigo TEXT PRIMARY KEY, nombre TEXT);
 
 CREATE TABLE nivel_ciclo (
   codigo TEXT PRIMARY KEY, programa TEXT, tipo TEXT, orden INTEGER,
@@ -176,6 +181,10 @@ function writeAll(db, { plan, materiales, model, catalog, join, vmiByCode, meta 
   for (const [nivel, lotes] of Object.entries(model.lotes)) {
     for (const l of lotes) insLote.run(nivel, l);
   }
+
+  // --- subsistemas del plan (solo nombre) ---
+  const insSub = db.prepare('INSERT OR IGNORE INTO subsistema VALUES (?,?)');
+  for (const s of plan.subsistemas ?? []) insSub.run(s.codigo, s.nombre);
 
   // --- sistemas + manuales + fichas ---
   const insSis = db.prepare('INSERT INTO sistema VALUES (?,?,?,?)');

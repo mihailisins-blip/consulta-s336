@@ -800,3 +800,122 @@ List<ActividadMaterialExport> materialesDeActividadParaExport(
       ),
   ];
 }
+
+// ---- Tabla del plan (pestaña "Plan") ----
+//
+// Una fila por actividad, con las mismas columnas que el plan de
+// mantenimiento en PDF/Excel: código, descripción, marca de seguridad, una
+// X por ciclo del programa km (+ NS) y observaciones. Los ciclos marcados
+// son los del propio plan (actividad_nivel), no el acumulado de
+// actividadesDeNivel.
+
+/// Columnas de ciclo de la tabla del plan, en el orden del documento.
+const ciclosPlan = ['I1', 'I2', 'IM1', 'IM2', 'IM3', 'R1', 'R2', 'NS'];
+
+class FilaPlan {
+  final String codigo;
+  final String? sistemaCodigo;
+
+  /// "ED3.01" para "ED3.01.03": agrupa las filas como el documento.
+  final String subsistemaCodigo;
+  final String? descripcion;
+
+  /// Compuesta como `override ?? extraído`: el curador puede corregir la
+  /// marca del plan (overrides: entidad 'actividad', campo
+  /// 'marca_seguridad', valor '1'/'0').
+  final bool marcaSeguridad;
+  final String? observaciones;
+  final Set<String> ciclos;
+
+  const FilaPlan({
+    required this.codigo,
+    required this.sistemaCodigo,
+    required this.subsistemaCodigo,
+    required this.descripcion,
+    required this.marcaSeguridad,
+    required this.observaciones,
+    required this.ciclos,
+  });
+}
+
+/// Todas las actividades como filas del plan, ordenadas por código.
+List<FilaPlan> listPlan(Database db) {
+  final ciclos = <String, Set<String>>{};
+  for (final r in db.select('SELECT actividad_codigo, nivel_codigo FROM actividad_nivel')) {
+    (ciclos[r['actividad_codigo'] as String] ??= <String>{}).add(r['nivel_codigo'] as String);
+  }
+  final rows = db.select('''
+    SELECT a.codigo, a.sistema_codigo, a.descripcion_plan, a.operacion,
+           a.marca_seguridad, a.observaciones_plan, o.valor AS marca_override
+    FROM actividad a
+    LEFT JOIN overrides o
+      ON o.entidad = 'actividad' AND o.id = a.codigo AND o.campo = 'marca_seguridad'
+    ORDER BY a.codigo
+  ''');
+  return [
+    for (final r in rows)
+      FilaPlan(
+        codigo: r['codigo'] as String,
+        sistemaCodigo: r['sistema_codigo'] as String?,
+        subsistemaCodigo: _subsistemaDe(r['codigo'] as String),
+        descripcion: (r['descripcion_plan'] as String?) ?? (r['operacion'] as String?),
+        marcaSeguridad: r['marca_override'] != null
+            ? r['marca_override'] == '1'
+            : ((r['marca_seguridad'] as int?) ?? 0) != 0,
+        observaciones: r['observaciones_plan'] as String?,
+        ciclos: ciclos[r['codigo'] as String] ?? const <String>{},
+      ),
+  ];
+}
+
+String _subsistemaDe(String codigo) {
+  final partes = codigo.split('.');
+  return partes.length >= 2 ? '${partes[0]}.${partes[1]}' : codigo;
+}
+
+/// Nombre de cada subsistema ("ED3.01" -> "Amortiguadores de primaria y
+/// secundaria"). La tabla `subsistema` es posterior al esquema v6: en una
+/// carpeta de datos que no la tenga se devuelve vacío y la tabla del plan
+/// titula los grupos solo con el código.
+Map<String, String> nombresSubsistema(Database db) {
+  final existe = db.select(
+    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'subsistema'",
+  );
+  if (existe.isEmpty) return const {};
+  return {
+    for (final r in db.select('SELECT codigo, nombre FROM subsistema WHERE nombre IS NOT NULL'))
+      r['codigo'] as String: r['nombre'] as String,
+  };
+}
+
+/// Filtra [filas] como la pestaña Plan: [texto] busca en código, descripción
+/// y observaciones (sin distinguir mayúsculas ni tildes); [sistema] null =
+/// todos; [ciclos] vacío = todos, si no, la fila debe tener X en ALGUNO.
+List<FilaPlan> filtrarPlan(
+  List<FilaPlan> filas, {
+  String texto = '',
+  String? sistema,
+  Set<String> ciclos = const {},
+}) {
+  final q = _sinTildes(texto.trim().toLowerCase());
+  return [
+    for (final f in filas)
+      if ((sistema == null || f.sistemaCodigo == sistema) &&
+          (ciclos.isEmpty || ciclos.any(f.ciclos.contains)) &&
+          (q.isEmpty ||
+              _sinTildes('${f.codigo} ${f.descripcion ?? ''} ${f.observaciones ?? ''}'.toLowerCase())
+                  .contains(q)))
+        f,
+  ];
+}
+
+String _sinTildes(String s) {
+  const de = 'áéíóúüàèìòùâêîôû';
+  const a = 'aeiouuaeiouaeiou';
+  final b = StringBuffer();
+  for (final ch in s.split('')) {
+    final i = de.indexOf(ch);
+    b.write(i >= 0 ? a[i] : ch);
+  }
+  return b.toString();
+}
